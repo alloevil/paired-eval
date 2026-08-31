@@ -333,6 +333,28 @@ def test_statistical_calibration():
 
 
 
+def test_power_cross_calibration():
+    """规划器与检验器的交叉校准: required_tasks(正态近似)给出的 n,
+    必须让 paired_compare(精确置换)在真实效应下达到接近标称的功效 ——
+    否则用户按虚低的 n 建任务集,永远等不到显著。种子固定,确定性复现。"""
+    import random as _r
+    p_w, p_l = 0.5, 0.05
+    n = ce.required_tasks(p_w, p_l, power=0.8, sims=300, seed=3)
+    assert n is not None
+    rng = _r.Random(11)
+    sims, hits = 150, 0
+    for i in range(sims):
+        diffs = []
+        for _ in range(n):
+            r = rng.random()
+            diffs.append(1.0 if r < p_w else (-1.0 if r < p_w + p_l else 0.0))
+        res = ce.paired_compare(diffs, [0.0] * n, n_resamples=200, seed=i)
+        hits += res["p_value"] < 0.05
+    power = hits / sims
+    assert power >= 0.70, f"规划器承诺80%功效,检验器实测仅 {power:.2f} —— n 被低估"
+
+
+
 def test_meter_thread_safety():
     m = ce.Meter()
     wrapped = m.wrap_llm(lambda p, s, sch: {"ok": 1})

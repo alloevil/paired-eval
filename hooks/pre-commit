@@ -1,0 +1,6 @@
+#!/bin/sh
+# 红灯不许提交: 全套件通过才放行。绕过需显式 --no-verify(等于签字承担后果)。
+sh "$(git rev-parse --show-toplevel)/runtests.sh" >/dev/null 2>&1 || {
+    echo "pre-commit: 测试未全绿,提交被拒。运行 sh runtests.sh 查看失败。"
+    exit 1
+}

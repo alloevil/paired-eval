@@ -137,8 +137,8 @@ def _safe_verdict(out, allowed, fallback=None):
     raise ValueError(f"判定器输出非法: {str(out)[:120]}")
 
 
-def extract_claims(text, llm):
-    """Stage 1-3: 分解 + 去语境化 + 可验证性筛选。抽取器输出形状非法时响亮报错。"""
+def _extract_all(text, llm):
+    """抽取全部条目(含 verifiable=false 的观点/hedge 句)。输出形状非法时响亮报错。"""
     out = llm(f"分解以下文本:\n\n{text}", EXTRACT_SYSTEM, EXTRACT_SCHEMA)
     claims = out.get("claims") if isinstance(out, dict) else None
     if not isinstance(claims, list):
@@ -148,7 +148,12 @@ def extract_claims(text, llm):
                 or not isinstance(c.get("verifiable"), bool) \
                 or c.get("importance") not in WEIGHTS or not c.get("search_query"):
             raise ValueError(f"抽取器输出非法 claim: {str(c)[:120]}")
-    return [c for c in claims if c["verifiable"]]
+    return claims
+
+
+def extract_claims(text, llm):
+    """Stage 1-3: 分解 + 去语境化 + 可验证性筛选,只返回可验证条目。"""
+    return [c for c in _extract_all(text, llm) if c["verifiable"]]
 
 
 def verify_world(claim, llm, search, max_retries=1, corroborate=False):
@@ -350,11 +355,18 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
 # ---------------------------------------------------------------- orchestrators
 
 def run_world(text, llm, search, pmap=map, max_retries=1, corroborate=False):
-    """开放世界全流程。pmap 可注入并行 map。"""
-    claims = extract_claims(text, llm)
+    """开放世界全流程。pmap 可注入并行 map。
+    观点/hedge 句不进 precision 分母,但单独计量 —— unverifiable_rate 高 = 模型在用
+    不可验证的话填充篇幅,该指标不可见时这种行为完全隐形。"""
+    all_claims = _extract_all(text, llm)
+    claims = [c for c in all_claims if c["verifiable"]]
     results = list(pmap(
         lambda c: verify_world(c, llm, search, max_retries, corroborate), claims))
-    return {"claims": results, "metrics": aggregate_world(results)}
+    n_unv = len(all_claims) - len(claims)
+    metrics = aggregate_world(results)
+    metrics["unverifiable"] = n_unv
+    metrics["unverifiable_rate"] = n_unv / len(all_claims) if all_claims else None
+    return {"claims": results, "metrics": metrics}
 
 
 def run_trajectory(claim_texts, observations, llm, pmap=map):

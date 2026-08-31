@@ -85,6 +85,8 @@ def test_run_world_and_retry():
     out = ce.run_world("DOC", mock_llm, mock_search)
     m, claims = out["metrics"], out["claims"]
     assert m["n"] == 3, "verifiable=False 的 C 应被过滤"
+    assert m["unverifiable"] == 1 and abs(m["unverifiable_rate"] - 0.25) < 1e-9, \
+        "观点句不进分母但必须单独计量"
     assert m["supported"] == 2 and m["contradicted"] == 1 and m["insufficient"] == 0
     assert abs(m["precision"] - 2 / 3) < 1e-9
     # 加权: supported=A(core,3)+D(supporting,2)=5, contradicted=B(detail,1) → 5/6

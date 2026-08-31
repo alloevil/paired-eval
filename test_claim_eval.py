@@ -308,6 +308,31 @@ def test_judge_insanity_guards():
 
 
 
+def test_statistical_calibration():
+    """统计原语的自校准: 公式抄对了不算数,误差率要实测。种子固定,确定性复现。"""
+    import random as _r
+    rng = _r.Random(7)
+    # Wilson CI 实测覆盖率必须落在标称 95% 附近
+    for p_true, n in [(0.5, 40), (0.1, 60)]:
+        trials, cover = 800, 0
+        for _ in range(trials):
+            k = sum(rng.random() < p_true for _ in range(n))
+            lo, hi = ce.wilson_ci(k, n)
+            cover += lo <= p_true <= hi
+        rate = cover / trials
+        assert 0.92 <= rate <= 0.99, f"覆盖率失准 p={p_true},n={n}: {rate:.3f}"
+    # 置换检验在 H0(两系统同分布)下的一类错误率不得超过标称 alpha 太多
+    sims, fp = 200, 0
+    for i in range(sims):
+        a = [1.0 if rng.random() < 0.6 else 0.0 for _ in range(30)]
+        b = [1.0 if rng.random() < 0.6 else 0.0 for _ in range(30)]
+        fp += ce.paired_compare(a, b, n_resamples=200, seed=i)["p_value"] < 0.05
+    rate = fp / sims
+    assert rate <= 0.09, f"H0 下假阳性率超标: {rate:.3f}(标称0.05,离散数据允许保守)"
+    assert rate >= 0.005, f"假阳性率反常地低,检验可能失去功效: {rate:.3f}"
+
+
+
 def test_meter_thread_safety():
     m = ce.Meter()
     wrapped = m.wrap_llm(lambda p, s, sch: {"ok": 1})

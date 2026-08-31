@@ -113,3 +113,27 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
         raise ValueError("全部任务被成对丢弃,无可比数据")
     compare = ce.paired_compare([r["a"] for r in rows], [r["b"] for r in rows])
     return {"rows": rows, "dropped": dropped, "compare": compare}
+
+
+def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
+                 prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
+    """单模型逐题重复 n 次: 把能力(pass@1)与可靠性(pass^k)剥开。
+    单发配对会把"抛硬币"误标成"能力缺口"(本仓库有真实案例: 某项连败2次,
+    n=8 复核实为 4/8) —— run_paired 发现的分歧项必须用本函数复核后才许下结论。
+    拒答/判定器异常按失败计。返回逐题 {"id","n","successes","pass_at_1","pass_hat_k","runs"}。"""
+    report = []
+    for t in tasks:
+        runs = []
+        for _ in range(n):
+            resp = model(prompt_prefix + t["instruction"])
+            try:
+                ok = bool(t["check"](str(resp))) if resp is not None else False
+            except Exception:
+                ok = False
+            runs.append(ok)
+        s = sum(runs)
+        report.append({"id": t["id"], "n": n, "successes": s,
+                       "pass_at_1": s / n,
+                       "pass_hat_k": ce.pass_hat_k(s, n, min(k, n)),
+                       "runs": runs})
+    return report

@@ -63,6 +63,31 @@ def test_paired_drop_and_crash_tolerance():
     assert row["b"] == 0.0 and row["a"] == 1.0
 
 
+def test_run_repeated_separates_capability_from_reliability():
+    tasks = [t for t in pb.ALL_TASKS if t["id"] in ("if-upper", "if-pi8")]
+    calls = {"n": 0}
+
+    def flaky(prompt):   # if-upper 恒对(能力); if-pi8 隔次对错(可靠性问题)
+        for t in tasks:
+            if t["instruction"] in prompt:
+                if t["id"] == "if-upper":
+                    return t["canonical"]
+                calls["n"] += 1
+                return t["canonical"] if calls["n"] % 2 == 1 else "错误"
+        raise AssertionError("未知prompt")
+
+    rep = {r["id"]: r for r in pb.run_repeated(flaky, tasks=tasks, n=8, k=3)}
+    stable = rep["if-upper"]
+    assert stable["successes"] == 8 and stable["pass_at_1"] == 1.0 and stable["pass_hat_k"] == 1.0
+    coin = rep["if-pi8"]
+    assert coin["successes"] == 4 and coin["pass_at_1"] == 0.5
+    assert abs(coin["pass_hat_k"] - 4 / 56) < 1e-12, "C(4,3)/C(8,3): 半对的可靠性≈0.07"
+    # 拒答按失败计
+    rep2 = pb.run_repeated(lambda p: None, tasks=tasks[:1], n=3, k=2)
+    assert rep2[0]["successes"] == 0 and rep2[0]["pass_hat_k"] == 0.0
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

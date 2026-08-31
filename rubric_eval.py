@@ -43,6 +43,9 @@ def verify_rubric(response, criteria, llm, reference=None, pmap=map):
     def judge(c):
         out = llm(f"criterion: {c['text']}\n\nresponse:\n{response}{ref}",
                   JUDGE_RUBRIC_SYSTEM, JUDGE_RUBRIC_SCHEMA)
+        if not isinstance(out, dict) or out.get("verdict") not in ("met", "not_met", "abstain"):
+            out = {"verdict": "abstain",  # 疯输出降级弃权: 不进分母,不污染分数
+                   "reasoning": f"判定器输出非法,已降级为 abstain: {str(out)[:80]}"}
         return {**c, **out}
 
     return list(pmap(judge, criteria))

@@ -270,6 +270,41 @@ def test_pass_hat_k():
             pass
 
 
+
+def test_judge_insanity_guards():
+    crazy = lambda p, s, sch: {"nonsense": True}
+    claim = _claim("X", "X", "core", "qX")
+    # world: 疯输出降级 insufficient(不进precision分母), 批次存活
+    r = ce.verify_world(claim, crazy, mock_search, max_retries=0)
+    assert r["verdict"] == "insufficient" and "非法" in r["reasoning"]
+    # trajectory: 无中性桶, 必须响亮报错
+    try:
+        ce.verify_trajectory("X", [{"tool_call_id": "t", "observation": "o"}], crazy)
+        assert False, "trajectory 疯输出应报错"
+    except ValueError:
+        pass
+    # 抽取器: 整体畸形与单条畸形都响亮报错
+    for bad in [crazy, lambda p, s, sch: {"claims": [{"text": "x", "verifiable": "yes"}]},
+                lambda p, s, sch: {"claims": [{"text": "x", "verifiable": True,
+                                               "importance": "huge", "search_query": "q"}]}]:
+        try:
+            ce.extract_claims("DOC", bad)
+            assert False, "抽取器畸形输出应报错"
+        except ValueError:
+            pass
+    # 重构query疯了: 沿用旧query继续, 不崩
+    def half_crazy(p, s, sch):
+        if s is ce.REFORMULATE_SYSTEM:
+            return "garbage"
+        return {"verdict": "insufficient", "evidence_quote": "", "reasoning": "r"}
+    r2 = ce.verify_world(claim, half_crazy, mock_search, max_retries=1)
+    assert r2["verdict"] == "insufficient" and r2["retries"] == 1
+    # derived: claimed_value 缺失/非数 → bad-expression 而非 KeyError
+    dm = lambda p, s, sch: {"computable": True, "expression": "1+1", "inputs": []}
+    r3 = ce.verify_derived("X", [{"tool_call_id": "t", "observation": "o"}], dm)
+    assert r3["verdict"] == "bad-expression" and "claimed_value" in r3["error"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

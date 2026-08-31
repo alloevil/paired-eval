@@ -126,10 +126,29 @@ WEIGHTS = {"core": 3, "supporting": 2, "detail": 1}
 EVIDENCE_CAP = 6000  # 证据文本截断长度
 
 
+def _safe_verdict(out, allowed, fallback=None):
+    """判定器输出防疯: 非 dict 或 verdict 不在合法枚举内时,有 fallback 则降级(带留痕),
+    否则响亮报错。每一处消费 LLM 输出的代码都必须假设对方随时可能发疯。"""
+    if isinstance(out, dict) and out.get("verdict") in allowed:
+        return out
+    if fallback is not None:
+        return {"verdict": fallback, "evidence_quote": "",
+                "reasoning": f"判定器输出非法,已降级为 {fallback}: {str(out)[:80]}"}
+    raise ValueError(f"判定器输出非法: {str(out)[:120]}")
+
+
 def extract_claims(text, llm):
-    """Stage 1-3: 分解 + 去语境化 + 可验证性筛选。"""
+    """Stage 1-3: 分解 + 去语境化 + 可验证性筛选。抽取器输出形状非法时响亮报错。"""
     out = llm(f"分解以下文本:\n\n{text}", EXTRACT_SYSTEM, EXTRACT_SCHEMA)
-    return [c for c in out["claims"] if c["verifiable"]]
+    claims = out.get("claims") if isinstance(out, dict) else None
+    if not isinstance(claims, list):
+        raise ValueError(f"抽取器输出非法(缺 claims 列表): {str(out)[:120]}")
+    for c in claims:
+        if not isinstance(c, dict) or not c.get("text") \
+                or not isinstance(c.get("verifiable"), bool) \
+                or c.get("importance") not in WEIGHTS or not c.get("search_query"):
+            raise ValueError(f"抽取器输出非法 claim: {str(c)[:120]}")
+    return [c for c in claims if c["verifiable"]]
 
 
 def verify_world(claim, llm, search, max_retries=1, corroborate=False):
@@ -139,21 +158,25 @@ def verify_world(claim, llm, search, max_retries=1, corroborate=False):
     query = claim["search_query"]
     for attempt in range(max_retries + 1):
         evidence = str(search(query))[:EVIDENCE_CAP]
-        verdict = llm(
+        verdict = _safe_verdict(llm(
             f"claim: {claim['text']}\n\n检索证据:\n{evidence}",
             JUDGE_WORLD_SYSTEM, JUDGE_WORLD_SCHEMA,
-        )
+        ), {"supported", "contradicted", "insufficient"}, fallback="insufficient")
         if verdict["verdict"] != "insufficient" or attempt == max_retries:
             break
-        query = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
-                    REFORMULATE_SYSTEM, REFORMULATE_SCHEMA)["query"]
+        out = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
+                  REFORMULATE_SYSTEM, REFORMULATE_SCHEMA)
+        query = (out.get("query") if isinstance(out, dict) else None) or query
     result = {**claim, **verdict, "retries": attempt}
     if corroborate and verdict["verdict"] == "contradicted":
-        q2 = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
-                 CORROBORATE_SYSTEM, REFORMULATE_SCHEMA)["query"]
+        out2 = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
+                   CORROBORATE_SYSTEM, REFORMULATE_SCHEMA)
+        q2 = (out2.get("query") if isinstance(out2, dict) else None) or query
         ev2 = str(search(q2))[:EVIDENCE_CAP]
-        v2 = llm(f"claim: {claim['text']}\n\n检索证据:\n{ev2}",
-                 JUDGE_WORLD_SYSTEM, JUDGE_WORLD_SCHEMA)
+        v2 = _safe_verdict(llm(f"claim: {claim['text']}\n\n检索证据:\n{ev2}",
+                               JUDGE_WORLD_SYSTEM, JUDGE_WORLD_SCHEMA),
+                           {"supported", "contradicted", "insufficient"},
+                           fallback="insufficient")
         if v2["verdict"] == "contradicted":
             result["corroborated"] = True
         else:
@@ -168,8 +191,10 @@ def verify_trajectory(claim_text, observations, llm):
     obs_text = "\n".join(
         f"[{o['tool_call_id']}] ({o.get('tool', '?')}) {o['observation']}" for o in observations
     )
-    verdict = llm(f"claim: {claim_text}\n\n轨迹observations:\n{obs_text}",
-                  JUDGE_TRAJ_SYSTEM, JUDGE_TRAJ_SCHEMA)
+    verdict = _safe_verdict(
+        llm(f"claim: {claim_text}\n\n轨迹observations:\n{obs_text}",
+            JUDGE_TRAJ_SYSTEM, JUDGE_TRAJ_SCHEMA),
+        {"grounded", "distorted", "fabricated"})  # 无中性桶: 非法输出响亮报错
     return {"text": claim_text, **verdict}
 
 
@@ -190,7 +215,10 @@ def verify_derived(claim_text, observations, llm, rel_tol=0.02):
     except Exception as exc:                          # 语法非法/除零等: judge输出不可信,不许崩批
         return {"text": claim_text, "verdict": "bad-expression",
                 "error": f"{type(exc).__name__}: {exc}", **plan}
-    claimed = plan["claimed_value"]
+    claimed = plan.get("claimed_value")
+    if not isinstance(claimed, (int, float)) or isinstance(claimed, bool):
+        return {"text": claim_text, "verdict": "bad-expression",
+                "error": f"claimed_value 非法: {claimed!r}", **plan}
     ok = abs(value - claimed) <= rel_tol * max(abs(value), abs(claimed), 1e-9)
     return {"text": claim_text, "verdict": "derived-ok" if ok else "derived-wrong",
             "recomputed": value, **plan}

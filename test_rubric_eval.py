@@ -75,6 +75,15 @@ def test_criterion_validation():
 
 
 
+def test_judge_insanity_guard():
+    crazy = lambda p, s, sch: ["not", "a", "dict"]
+    out = re_.run_rubric("resp", [{"text": "条X", "weight": 1}], crazy)
+    m = out["metrics"]
+    assert m["abstain"] == 1 and m["score"] is None, "疯输出降级abstain,不污染分数"
+    assert "非法" in out["criteria"][0]["reasoning"]
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

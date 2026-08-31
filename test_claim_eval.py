@@ -307,6 +307,19 @@ def test_judge_insanity_guards():
     assert r3["verdict"] == "bad-expression" and "claimed_value" in r3["error"]
 
 
+
+def test_meter_thread_safety():
+    m = ce.Meter()
+    wrapped = m.wrap_llm(lambda p, s, sch: {"ok": 1})
+    wrapped_s = m.wrap_search(lambda q: "ev")
+    pmap = ce.throttled_pmap(max_workers=8)
+    pmap(lambda i: (wrapped("p", "s", {}), wrapped_s("q")), range(2000))
+    snap = m.snapshot()
+    assert snap["llm_calls"] == 2000 and snap["search_calls"] == 2000, \
+        "并发下计数必须精确 —— 账单少记是静默错误"
+    assert snap["llm_chars_in"] == 2000 * 2 and snap["llm_chars_out"] == 2000 * len(str({"ok": 1}))
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

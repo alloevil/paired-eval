@@ -23,6 +23,7 @@
 import math
 import random
 import re
+import threading
 import time
 
 # ---------------------------------------------------------------- prompts
@@ -418,6 +419,7 @@ class Meter:
     自动获得每任务成本增量(result["cost"])。"""
 
     def __init__(self):
+        self._lock = threading.Lock()  # 与 throttled_pmap 并发使用时裸 += 会静默少记
         self.llm_calls = 0
         self.llm_chars_in = 0
         self.llm_chars_out = 0
@@ -425,22 +427,26 @@ class Meter:
 
     def wrap_llm(self, llm):
         def wrapped(prompt, system, schema):
-            self.llm_calls += 1
-            self.llm_chars_in += len(prompt) + len(system)
+            with self._lock:
+                self.llm_calls += 1
+                self.llm_chars_in += len(prompt) + len(system)
             out = llm(prompt, system, schema)
-            self.llm_chars_out += len(str(out))
+            with self._lock:
+                self.llm_chars_out += len(str(out))
             return out
         return wrapped
 
     def wrap_search(self, search):
         def wrapped(query):
-            self.search_calls += 1
+            with self._lock:
+                self.search_calls += 1
             return search(query)
         return wrapped
 
     def snapshot(self):
-        return {"llm_calls": self.llm_calls, "llm_chars_in": self.llm_chars_in,
-                "llm_chars_out": self.llm_chars_out, "search_calls": self.search_calls}
+        with self._lock:
+            return {"llm_calls": self.llm_calls, "llm_chars_in": self.llm_chars_in,
+                    "llm_chars_out": self.llm_chars_out, "search_calls": self.search_calls}
 
     @staticmethod
     def delta(after, before):

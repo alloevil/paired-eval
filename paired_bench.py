@@ -4,9 +4,12 @@
 任务 schema: {"id", "instruction", "check": str->bool, "canonical": 一个合法输出样例}
 model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 -> 该题成对丢弃)。
 
-run_paired(model_a, model_b, tasks) 执行完整配对工作流:
-逐题双侧作答 -> 程序判定 -> 成对丢弃缺失 -> claim_eval.paired_compare 出统计。
+入口:
+    make_model(call)                    # 裸调用适配: 异常有界重试, 耗尽转 None
+    run_paired(model_a, model_b, tasks) # 双侧作答 -> 判定 -> 成对丢弃 -> 置换检验
+    run_repeated(model, tasks, n=8)     # 分歧项复核: pass@1(能力) vs pass^k(可靠性)
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
+纪律: run_paired 的分歧项必须经 run_repeated 复核才许下结论(有误标前科)。
 """
 
 import time

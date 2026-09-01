@@ -15,6 +15,8 @@ evaluate(task, response=..., observations=..., llm=..., search=...) 按类别路
 "details", "verifier_fp", "cost"?}。score 语义按类别: exact=0/1; retrieval=加权precision;
 trajectory=grounding_rate; rubric=加权met率(全弃权为 None)。
 summarize(rows) 按类别汇总 n/均分/成本合计, 混指纹默认拒绝 —— 跨指纹分数不可混合。
+repeat_evaluate(task, n=8, ...) 同配置重复运行: judge 类路由跨 run 有方差, 单 run 无结论;
+二值任务附 successes, 配 claim_eval.pass_hat_k 读可靠性。
 
 execution / deferred / preference / policy 不在本模块职责内 —— 它们分别需要
 沙盒、时间、人类锚点、规范文本, 属宿主系统; 传入会得到明确报错而不是静默降级。

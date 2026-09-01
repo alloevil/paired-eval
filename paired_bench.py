@@ -68,8 +68,8 @@ IF_TASKS = [
      "check": lambda r: (lambda d: isinstance(d, dict) and set(d) == {"a", "b"}
                          and all(isinstance(v, int) and not isinstance(v, bool) for v in d.values()))(__import__("json").loads(r.strip())),
      "canonical": '{"a": 1, "b": 2}'},
-    {"id": "if-nomoon", "instruction": "用一句话介绍月亮,但全句不得出现'月'这个字",
-     "check": lambda r: "月" not in r and len(r.strip()) >= 5,
+    {"id": "if-nomoon", "instruction": "用一句话介绍月亮,句中必须包含'卫星'一词,且全句不得出现'月'这个字",
+     "check": lambda r: "卫星" in r and "月" not in r and len(r.strip()) >= 5,
      "canonical": "地球唯一的天然卫星,夜空中最亮的天体之一。"},
     {"id": "if-evens", "instruction": "输出1到10之间的所有偶数,用英文逗号分隔,不含任何空格",
      "check": _eq("2,4,6,8,10"), "canonical": "2,4,6,8,10"},

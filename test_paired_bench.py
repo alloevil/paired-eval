@@ -159,6 +159,24 @@ def test_audit_trails():
 
 
 
+def test_wrong_probes_rejected():
+    """outcome validity 的另一半: canonical 必须被接受(已有测试),
+    通用错误输出必须被拒绝 —— 来者不拒的判定器会让所有系统并列满分(ABC do-nothing 类缺陷)。
+    判定器抛异常按拒绝计(与 run_paired 的 score 语义一致)。"""
+    probes = ["", "这是一段不相关的回答内容", "答案: 9999999999"]
+    leaky = []
+    for t in pb.ALL_TASKS:
+        for p in probes:
+            try:
+                accepted = bool(t["check"](p))
+            except Exception:
+                accepted = False
+            if accepted:
+                leaky.append((t["id"], p[:20]))
+    assert not leaky, f"判定器接受了明显错误的输出: {leaky}"
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

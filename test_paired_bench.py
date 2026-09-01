@@ -139,6 +139,26 @@ def test_reliability_matrix():
 
 
 
+def test_audit_trails():
+    tasks = [t for t in pb.ALL_TASKS if t["id"] == "if-upper"]
+
+    def model_a(prompt):
+        return "HELLO WORLD"
+
+    def model_b(prompt):
+        return "x" * 500   # 超长错误输出必须被截断留痕
+
+    out = pb.run_paired(model_a, model_b, tasks=tasks)
+    row = out["rows"][0]
+    assert row["resp_a"] == "HELLO WORLD" and row["b"] == 0.0
+    assert row["resp_b"] == "x" * 120, "留痕按 _TRAIL_CAP 截断"
+    rep = pb.run_repeated(lambda p: "HELLO WORLD", tasks=tasks, n=3)
+    assert rep[0]["responses"] == ["HELLO WORLD"] * 3
+    rep2 = pb.run_repeated(lambda p: None, tasks=tasks, n=2)
+    assert rep2[0]["responses"] == [None, None], "拒答留痕为 None,与失败输出可区分"
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

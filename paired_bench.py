@@ -113,9 +113,13 @@ CHAR_TASKS = [
 ALL_TASKS = EXACT_QA + IF_TASKS + CHAR_TASKS
 
 
+_TRAIL_CAP = 120  # 留痕截断长度: 够诊断失败模式,不撑爆报告
+
+
 def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
     """完整配对 A/B: 双侧作答 -> 程序判定 -> 任一侧 None 成对丢弃 -> 置换检验。
-    返回 {"rows": [{"id", "a", "b"}], "dropped": [id], "compare": paired_compare结果}。"""
+    返回 {"rows": [{"id","a","b","resp_a","resp_b"}], "dropped": [id], "compare": ...}。
+    原始输出留痕(截断): 分歧项诊断靠看失败输出长什么样,只留 0/1 无法审计。"""
     rows, dropped = [], []
     for t in tasks:
         ra, rb = model_a(prompt_prefix + t["instruction"]), model_b(prompt_prefix + t["instruction"])
@@ -128,7 +132,8 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
                 return 1.0 if t["check"](str(resp)) else 0.0
             except Exception:
                 return 0.0   # 输出连判定器都解析不了 = 不合规
-        rows.append({"id": t["id"], "a": score(ra), "b": score(rb)})
+        rows.append({"id": t["id"], "a": score(ra), "b": score(rb),
+                     "resp_a": str(ra)[:_TRAIL_CAP], "resp_b": str(rb)[:_TRAIL_CAP]})
     if not rows:
         raise ValueError("全部任务被成对丢弃,无可比数据")
     compare = ce.paired_compare([r["a"] for r in rows], [r["b"] for r in rows])
@@ -143,7 +148,7 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
     拒答/判定器异常按失败计。返回逐题 {"id","n","successes","pass_at_1","pass_hat_k","runs"}。"""
     report = []
     for t in tasks:
-        runs = []
+        runs, resps = [], []
         for _ in range(n):
             resp = model(prompt_prefix + t["instruction"])
             try:
@@ -151,11 +156,12 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
             except Exception:
                 ok = False
             runs.append(ok)
+            resps.append(None if resp is None else str(resp)[:_TRAIL_CAP])
         s = sum(runs)
         report.append({"id": t["id"], "n": n, "successes": s,
                        "pass_at_1": s / n,
                        "pass_hat_k": ce.pass_hat_k(s, n, min(k, n)),
-                       "runs": runs})
+                       "runs": runs, "responses": resps})
     return report
 
 

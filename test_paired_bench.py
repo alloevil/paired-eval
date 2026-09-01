@@ -111,6 +111,34 @@ def test_make_model_adapter():
 
 
 
+def test_reliability_matrix():
+    mk_report = lambda pairs: [{"id": i, "n": 8, "successes": int(p * 8),
+                                "pass_at_1": p, "pass_hat_k": 0.0, "runs": []}
+                               for i, p in pairs]
+    reports = {
+        "smol":    mk_report([("rev6", 1.0), ("third", 0.5)]),
+        "default": mk_report([("rev6", 0.0), ("third", 1.0)]),
+        "slow":    mk_report([("rev6", 0.875), ("third", 1.0)]),
+    }
+    rows = pb.reliability_matrix(reports)
+    r6 = next(r for r in rows if r["id"] == "rev6")
+    assert r6["smol"] == 1.0 and r6["default"] == 0.0 and r6["slow"] == 0.875
+    assert abs(r6["spread"] - 1.0) < 1e-9 and r6["divergent"]
+    th = next(r for r in rows if r["id"] == "third")
+    assert abs(th["spread"] - 0.5) < 1e-9 and th["divergent"]
+    # 阈值可调: 提高到0.6后 third 不再算分歧
+    rows2 = pb.reliability_matrix(reports, divergence=0.6)
+    assert not next(r for r in rows2 if r["id"] == "third")["divergent"]
+    # 任务集不一致必须拒绝
+    bad = dict(reports, slow=mk_report([("rev6", 1.0)]))
+    try:
+        pb.reliability_matrix(bad)
+        assert False, "id序列不同应报错"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

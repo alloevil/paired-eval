@@ -157,3 +157,28 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
                        "pass_hat_k": ce.pass_hat_k(s, n, min(k, n)),
                        "runs": runs})
     return report
+
+
+def reliability_matrix(reports, divergence=0.25):
+    """多系统 run_repeated 报告透视: 每题一行,各系统 pass@1 并排,
+    spread = 跨系统最大差距, spread >= divergence 标为分歧项。
+    分歧项是两类信号之一: 真实能力差(可能非单调 —— 本仓库实测过
+    smol 8/8 / default 0/8 / slow 7/8 的反序洞), 或题目本身有歧义,都值得人工看一眼。
+    reports: {"系统名": run_repeated 返回值}; 各系统任务集必须一致。"""
+    if not reports:
+        raise ValueError("reports 不能为空")
+    names = sorted(reports)
+    ids = [r["id"] for r in reports[names[0]]]
+    for nm in names[1:]:
+        if [r["id"] for r in reports[nm]] != ids:
+            raise ValueError("各系统的任务集必须一致(id 序列不同)")
+    rows = []
+    for i, tid in enumerate(ids):
+        row = {"id": tid}
+        for nm in names:
+            row[nm] = reports[nm][i]["pass_at_1"]
+        vals = [row[nm] for nm in names]
+        row["spread"] = max(vals) - min(vals)
+        row["divergent"] = row["spread"] >= divergence
+        rows.append(row)
+    return rows

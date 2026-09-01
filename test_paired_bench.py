@@ -88,6 +88,29 @@ def test_run_repeated_separates_capability_from_reliability():
 
 
 
+def test_make_model_adapter():
+    calls, naps = [], []
+
+    def flaky(prompt):        # 第一次炸,第二次成功
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("transient")
+        return "答案: 42"
+
+    m = pb.make_model(flaky, tries=2, sleep=naps.append)
+    assert m("q") == "答案: 42" and naps == [2.0], "瞬时故障重试后成功"
+    dead = pb.make_model(lambda p: (_ for _ in ()).throw(RuntimeError("down")),
+                         tries=2, sleep=lambda _: None)
+    assert dead("q") is None, "持续故障返回None走成对丢弃,不崩批"
+    # 全灭防静默: 两侧全None时 run_paired 必须报错而非返回空结果
+    try:
+        pb.run_paired(dead, dead, tasks=pb.ALL_TASKS[:2])
+        assert False, "全部丢弃应报错"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

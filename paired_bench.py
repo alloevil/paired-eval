@@ -9,8 +9,25 @@ run_paired(model_a, model_b, tasks) 执行完整配对工作流:
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
 """
 
+import time
+
 import answer_match as am
 import claim_eval as ce
+
+
+def make_model(call, tries=2, sleep=time.sleep):
+    """把会抛异常的裸调用 call(prompt)->str 适配成 bench 契约 model(prompt)->str|None:
+    异常有界重试,耗尽返回 None(该题成对丢弃,不崩整批)。
+    全部任务被丢弃时 run_paired 会报错 —— 持续性故障不会被静默吞成"无数据"。"""
+    def model(prompt):
+        for i in range(tries):
+            try:
+                return str(call(prompt))
+            except Exception:
+                if i < tries - 1:
+                    sleep(2.0 * (i + 1))
+        return None
+    return model
 
 
 def _num(gold, tol):

@@ -394,3 +394,28 @@ def saturation(reports, max_span_s=3600, require_interleaved=True):
             "informative": len(info), "informative_rate": len(info) / n if n else None,
             "ids": {"saturated_pass": sat_pass, "saturated_fail": sat_fail,
                     "informative": info}}
+
+
+def screen_tasks(candidates, models, n=2, **kw):
+    """新题入库前的信息量筛选: 交错跑一遍, 只保留非饱和(有区分力)的题。
+    纪律: 任务集不是想加就加 —— 恒过/恒败的题不提高功效, 只增加每次评测的成本。
+    实测教训: 12 道"更硬"的单步字符串/算术题(10字符倒序、1234×5678、第20个素数等)
+    对 smol+default 全部恒过, 本筛选阻止了它们入库 —— 提升区分力需要质变的难度
+    (多约束组合、长程、精度敏感), 不是同类题加长。
+    candidates 需满足 canonical 通过自身 check 且 id 不与 ALL_TASKS 冲突。
+    返回 {"kept","saturated_pass","saturated_fail","reports","saturation"}。"""
+    existing = {t["id"] for t in ALL_TASKS}
+    for c in candidates:
+        if not c.get("id") or not c.get("instruction") or "check" not in c or "canonical" not in c:
+            raise ValueError(f"候选题字段不全: {c.get('id')!r}")
+        if c["id"] in existing:
+            raise ValueError(f"候选题 id 与现有任务冲突: {c['id']}")
+        if not c["check"](c["canonical"]):
+            raise ValueError(f"候选题 canonical 过不了自身判定器: {c['id']}")
+    run = run_interleaved(models, tasks=candidates, n=n, **kw)
+    sat = saturation(run["reports"])
+    by_id = {c["id"]: c for c in candidates}
+    return {"kept": [by_id[i] for i in sat["ids"]["informative"]],
+            "saturated_pass": [by_id[i] for i in sat["ids"]["saturated_pass"]],
+            "saturated_fail": [by_id[i] for i in sat["ids"]["saturated_fail"]],
+            "reports": run["reports"], "saturation": sat}

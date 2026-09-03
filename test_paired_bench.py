@@ -302,6 +302,41 @@ def test_saturation_diagnostic():
 
 
 
+def test_screen_tasks():
+    """入库前筛选: 只保留有区分力的题; 坏候选(canonical不自洽/id冲突/字段缺失)先被拦。"""
+    cands = [
+        {"id": "cand-easy", "instruction": "输出 OK", "check": lambda r: r.strip() == "OK",
+         "canonical": "OK"},
+        {"id": "cand-hard", "instruction": "输出 IMPOSSIBLE",
+         "check": lambda r: r.strip() == "IMPOSSIBLE", "canonical": "IMPOSSIBLE"},
+        {"id": "cand-split", "instruction": "输出 SPLIT", "check": lambda r: r.strip() == "SPLIT",
+         "canonical": "SPLIT"},
+    ]
+    good = lambda p: {"输出 OK": "OK", "输出 IMPOSSIBLE": "no", "输出 SPLIT": "SPLIT"}[
+        next(c["instruction"] for c in cands if c["instruction"] in p)]
+    weak = lambda p: {"输出 OK": "OK", "输出 IMPOSSIBLE": "no", "输出 SPLIT": "nope"}[
+        next(c["instruction"] for c in cands if c["instruction"] in p)]
+    out = pb.screen_tasks(cands, {"a": good, "b": weak}, n=2)
+    assert [t["id"] for t in out["kept"]] == ["cand-split"], "只留有区分力的"
+    assert [t["id"] for t in out["saturated_pass"]] == ["cand-easy"]
+    assert [t["id"] for t in out["saturated_fail"]] == ["cand-hard"]
+    assert out["saturation"]["informative"] == 1
+    # 坏候选拦截
+    bad_cases = [
+        [{"id": "x", "instruction": "i", "check": lambda r: False, "canonical": "c"}],
+        [{"id": pb.ALL_TASKS[0]["id"], "instruction": "i",
+          "check": lambda r: True, "canonical": "c"}],
+        [{"id": "y", "instruction": "i"}],
+    ]
+    for bad in bad_cases:
+        try:
+            pb.screen_tasks(bad, {"a": good, "b": weak}, n=1)
+            assert False, f"坏候选应被拦: {bad[0].get('id')}"
+        except ValueError:
+            pass
+
+
+
 def test_paired_repeated_survives_drift():
     """交错配对的核心性质: 全局漂移(两侧同时变差)不产生假差异;
     真实单侧差异照常检出; 拒答按轮成对丢弃,配对不破。"""

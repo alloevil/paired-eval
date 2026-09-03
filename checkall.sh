@@ -3,10 +3,15 @@
 # 本脚本是发布流程的可执行文档 —— 各层的分层理由见对应工具头部, 这里只保证
 # 顺序正确、全部跑到、任一失败都反映在退出码里(不因前面失败就跳过后面, 一次看全)。
 #
-#   1 快速套件      ~2s    136 测试 + 结构自检(pre-commit 用的就是它)
+#   1 快速套件      ~2s    147 测试 + 结构自检(pre-commit 用的就是它)
 #   2 钩子集成      ~26s   建临时仓库+裸远端跑真钩子(pre-commit/pre-push 行为)
 #   3 手挑变异      ~81s   42 个高阶语义变异 + 腐坏检测(PATTERN-MISS)
 #   4 机械变异棘轮  ~6min  381 个变异点全量, 与基线比对, 新增存活即失败
+#
+# 刻意不在此脚本内的第五层: reproduce_findings.py(约32次真实模型调用, 需注入 call)。
+# 它检的是"记录的实测结论是否漂移", 依赖外部服务与配额, 不能进无网可跑的清单;
+# 其判据逻辑本身已被 test_reproduce_findings.py 用假 call 覆盖(在第 1 层里)。
+# 发布前若涉及结论变更, 手动跑: python3 -c "import reproduce_findings as r; r.main(call)"
 #
 # 用法: sh checkall.sh          全部四层
 #       sh checkall.sh --fast   只跑前三层(跳过 6 分钟的棘轮)

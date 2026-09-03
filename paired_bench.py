@@ -790,7 +790,10 @@ DERIVATION_CASES = [
     {"id": "der-growth-base",
      "question": "问题: C公司2020年营收多少?",
      "observations": ["C公司营收从2020年到2023年增长了3倍。", "C公司2023年营收900亿元。"],
-     "trap": "用增长倍数反推初值; '增长3倍'本身还有 3x/4x 歧义"},
+     "trap": "用增长倍数反推初值; '增长3倍'本身还有 3x/4x 歧义",
+     "note": "边缘题(第118轮实测): 真实水平约 0.89~1.0, 两次独立筛选一次留一次弃。"
+             " 它在默认 band(上界0.9)下会被判恒过 —— 保留在此仅因它是该族的原型题,"
+             " 做 A/B 时应以 der-gross-profit / der-cagr 为主力(两次筛选都稳定保留)"},
     {"id": "der-gross-profit",
      "question": "问题: I公司2023年毛利多少?",
      "observations": ["I公司2023年营收680亿元。", "I公司2023年毛利率31%。"],
@@ -801,9 +804,73 @@ DERIVATION_CASES = [
      "trap": "年均增速需开三次方, 资料只给两端"},
 ]
 
+# 筛选协议的可靠性(第118轮, 同 6 道候选独立筛两次): 一致率 5/6, 详见 screen_graded
+# 的 docstring。稳定保留的只有 der-gross-profit(0.78~0.89) 与 der-cagr(0.64~0.65)。
 # 同批筛掉的(严格提示下恒过, 留作反例: 猜哪些题有余量会打脸, 6 道里只中 3 道):
 #   占比求总量(市占率28% + 收入140亿 -> 总规模)      3/3 恒过
 #   同比求上期(2023年56亿 + 同比40% -> 2022年)      3/3 恒过
 #   单价求数量(收入240亿 + 均价1.2万 -> 台数)        3/3 恒过
 #   另有 3 道非推算型硬题(跨源混淆/冲突数据/hedge当事实)也恒过 —— 模型在"该说什么"
 #   上很稳, 栽在"能不能忍住不算"。这条区分是本族有余量的根本原因。
+
+
+def screen_graded(cases, grade, n=2, confirm_n=3, band=(0.0, 0.9), **kw):
+    """judge 评分类候选题的两阶段筛选 —— screen_tasks 的连续分数版本。
+
+    为什么需要单独一支: screen_tasks 要求候选带程序判据(check)与 canonical, 而
+    第113~116轮找有余量题族时用的是 eval_task 的 trajectory 路由(claim 抽取 + 逐条
+    grounding), 分数是连续的、由 judge 给出。那轮筛选手工跑了两遍才成功, 却没有工具
+    承载 —— 而"找到不触顶的参照格"恰是整个交互测量最难的一步(六轮才成功一次)。
+
+    阶段1(便宜, n 轮): 算每题均分, 落在 band 开区间内的进入复核。
+    阶段2(复核, confirm_n 轮): 再跑, 仍在区间内且不是所有轮次都贴同一端才保留。
+      复核的必要性与 screen_tasks 同源: 低 n 会把噪声标成"有余量"。实测(第116轮):
+      6 道推算候选在 n=1 下挑出 3 道, n=3 复核后 3 道全部稳定 —— 但另 6 道非推算型
+      硬题(跨源混淆/冲突数据/hedge当事实)在 n=1 就全部恒过, 一次即筛掉。
+    grade(case) -> float in [0,1]; 需自带模型与 judge 的绑定。
+    band 是开区间: 端点外视为饱和(恒过/恒败), 因为它们不携带区分信息。
+
+    默认 band 上界取 0.9 而非 1.0, n 默认 2 —— 两个默认值都来自第118轮的实测:
+      同 6 道候选被独立筛两次(第116轮手工 n=1, 第118轮工具 n=1), 一致率 5/6。
+      唯一分歧是 der-growth-base: 真实水平约 0.89~1.0, 两次分别得 0.40 与 1.00。
+      算功效就明白为什么不可救: 真实 rate=0.9 时单轮抽中满分的概率就是 0.9,
+      n=2 全满分 0.81, n=3 仍 0.73 —— 近顶题在任何可负担轮数下都筛不稳。
+      结论: 不要靠加轮数救近顶题, 直接把近顶区排除在 band 之外。"不等于 1.0"
+      不代表"有余量" —— 0.95 的题贡献的不一致对趋近于零, 与恒过无异。
+    返回 {"kept","dropped_on_confirm","saturated_pass","saturated_fail",
+          "screen_scores","confirm_scores"}。
+    """
+    lo, hi = band
+    if not 0.0 <= lo < hi <= 1.0:
+        raise ValueError(f"band 必须是 [0,1] 内的有效区间, 得到 {band}")
+    if n < 1 or (confirm_n is not None and confirm_n < 1):
+        raise ValueError(f"轮数必须 >=1, 得到 n={n} confirm_n={confirm_n}")
+    ids = [c.get("id") for c in cases]
+    if not all(ids) or len(set(ids)) != len(ids):
+        raise ValueError("候选题 id 必须存在且互不重复")
+    out = {"kept": [], "dropped_on_confirm": [], "saturated_pass": [],
+           "saturated_fail": [], "screen_scores": {}, "confirm_scores": {}}
+    flagged = []
+    for c in cases:
+        ss = [grade(c) for _ in range(n)]
+        out["screen_scores"][c["id"]] = ss
+        mean = sum(ss) / len(ss)
+        if mean >= hi:
+            out["saturated_pass"].append(c["id"])
+        elif mean <= lo:
+            out["saturated_fail"].append(c["id"])
+        else:
+            flagged.append(c)
+    if confirm_n is None:
+        out["kept"] = flagged
+        return out
+    for c in flagged:
+        ss = [grade(c) for _ in range(confirm_n)]
+        out["confirm_scores"][c["id"]] = ss
+        mean = sum(ss) / len(ss)
+        # 均分在区间内, 且不是每一轮都贴着同一端(那是"偶尔失手"而非稳定有余量)
+        if lo < mean < hi and not all(s >= hi for s in ss) and not all(s <= lo for s in ss):
+            out["kept"].append(c)
+        else:
+            out["dropped_on_confirm"].append(c["id"])
+    return out

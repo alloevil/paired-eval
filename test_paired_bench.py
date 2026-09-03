@@ -924,6 +924,148 @@ def test_derivation_cases_shape_and_distinctness():
     assert len({c["trap"] for c in pb.DERIVATION_CASES}) == 3
 
 
+
+
+def test_screen_graded_two_stages():
+    """连续分数版筛选: 恒过/恒败一阶段筛掉, 噪声与贴边者二阶段剔除。
+    第116轮手工跑了两遍这个协议才找到有余量题族, 本函数承载它。"""
+    seq = {"always1": [1.0], "always0": [0.0], "stable-mid": [0.6, 0.7, 0.65, 0.7],
+           "noise": [0.5, 1.0, 1.0, 1.0], "edge": [0.9, 1.0, 1.0, 1.0]}
+    pos = {k: 0 for k in seq}
+
+    def grade(c):
+        k = c["id"]
+        v = seq[k][pos[k] % len(seq[k])]
+        pos[k] += 1
+        return v
+
+    cases = [{"id": k} for k in ("always1", "always0", "stable-mid", "noise", "edge")]
+    r = pb.screen_graded(cases, grade, n=1, confirm_n=3)
+    # 默认 band 上界 0.9: edge 首轮就是 0.9, 落在上界之外 -> 一阶段即判恒过
+    assert r["saturated_pass"] == ["always1", "edge"], r["saturated_pass"]
+    assert r["saturated_fail"] == ["always0"]
+    assert [c["id"] for c in r["kept"]] == ["stable-mid"]
+    assert r["dropped_on_confirm"] == ["noise"], \
+        "复核阶段剔除噪声(0.5 -> 三轮全 1.0); 贴边者已在一阶段被 band 拦掉"
+    # 留痕: 两阶段的分数都要留下, 否则无法事后判断剔除是否正确
+    assert r["screen_scores"]["noise"] == [0.5] and r["confirm_scores"]["noise"] == [1.0] * 3
+    assert "always1" not in r["confirm_scores"], "一阶段筛掉的不该进复核(白花调用)"
+    # 放宽 band 到 1.0 时 edge 才进复核, 并在那里被剔除 —— 证明两道关各自有效
+    pos.update({k: 0 for k in seq})
+    r_wide = pb.screen_graded(cases, grade, n=1, confirm_n=3, band=(0.0, 1.0))
+    assert "edge" in r_wide["dropped_on_confirm"], r_wide["dropped_on_confirm"]
+    # confirm_n=None 跳过复核: 此时噪声会被留下 —— 契约要显式
+    pos.update({k: 0 for k in seq})
+    r2 = pb.screen_graded(cases, grade, n=1, confirm_n=None)
+    assert set(c["id"] for c in r2["kept"]) == {"stable-mid", "noise"}
+    assert r2["confirm_scores"] == {} and r2["dropped_on_confirm"] == []
+
+
+def test_screen_graded_rejects_bad_input():
+    """输入契约: band 必须是 [0,1] 内的有效开区间, 轮数 >=1, id 唯一且非空。
+    这些若不拦, 筛选会静默给出空结果 —— 而空结果看起来像"所有题都饱和"。"""
+    g = lambda c: 0.5
+    ok = [{"id": "a"}]
+    for bad in ((0.5, 0.5), (0.6, 0.4), (-0.1, 1.0), (0.0, 1.1)):
+        try:
+            pb.screen_graded(ok, g, band=bad)
+            raise AssertionError(f"band={bad} 应报错")
+        except ValueError as e:
+            assert "band" in str(e), str(e)
+    for n, cn in ((0, 3), (1, 0), (-1, 3)):
+        try:
+            pb.screen_graded(ok, g, n=n, confirm_n=cn)
+            raise AssertionError(f"n={n} confirm_n={cn} 应报错")
+        except ValueError as e:
+            assert "轮数" in str(e), str(e)
+    for bad_cases in ([{"id": "a"}, {"id": "a"}], [{"id": ""}], [{}]):
+        try:
+            pb.screen_graded(bad_cases, g)
+            raise AssertionError(f"{bad_cases} 应报错")
+        except ValueError as e:
+            assert "id" in str(e), str(e)
+    # 自定义 band: 0.2~0.8 之外都算饱和
+    r = pb.screen_graded([{"id": "x"}], lambda c: 0.9, n=1, band=(0.2, 0.8))
+    assert r["saturated_pass"] == ["x"], "0.9 在 band 上端之外, 应判恒过"
+
+
+
+
+def test_screen_graded_band_endpoints_are_saturated():
+    """band 是开区间: 恰好落在端点上即算饱和 —— 这是"0.9 的题与恒过无异"的直接体现。
+    用 0.2/0.8 做端点(二进制可精确表示), 否则浮点会让相等分支测不到(第117轮踩过)。"""
+    band = (0.2, 0.8)
+    assert sum([0.8] * 4) / 4 == 0.8 and sum([0.2] * 4) / 4 == 0.2, "端点须精确"
+    for score, want in ((0.8, "saturated_pass"), (0.8125, "saturated_pass"),
+                        (0.2, "saturated_fail"), (0.1875, "saturated_fail")):
+        r = pb.screen_graded([{"id": "x"}], lambda c, s=score: s, n=1,
+                             confirm_n=None, band=band)
+        assert r[want] == ["x"], f"score={score} 应判 {want}: {r}"
+        assert r["kept"] == [], f"score={score} 不该保留"
+    # 严格在区间内才保留
+    mid = pb.screen_graded([{"id": "x"}], lambda c: 0.5, n=1, confirm_n=None, band=band)
+    assert [c["id"] for c in mid["kept"]] == ["x"]
+
+
+def test_screen_graded_confirm_rejects_edge_hugging():
+    """复核判据有三个条件(均分在区间内 + 非全贴上端 + 非全贴下端), 各自要能单独否决。
+    构造让均分落在区间内、但每轮都贴同一端的序列 —— 那是"偶尔失手"而非稳定有余量。"""
+    band = (0.2, 0.8)
+    # 均分 0.5 在区间内, 但每轮都在端点上(0.8/0.2 交替) -> 复核必须剔除
+    seq = [0.8, 0.2, 0.8, 0.2]
+    it = iter(seq)
+    r = pb.screen_graded([{"id": "x"}], lambda c: next(it), n=1, confirm_n=3, band=band)
+    # 首轮 0.8 恰在上界 -> 一阶段就判恒过, 说明 band 关比复核关更早生效
+    assert r["saturated_pass"] == ["x"], r
+    # 让首轮落在区间内(0.5), 后三轮全贴上端 -> 这次由复核关否决
+    it2 = iter([0.5, 0.8, 0.8, 0.8])
+    r2 = pb.screen_graded([{"id": "x"}], lambda c: next(it2), n=1, confirm_n=3, band=band)
+    assert r2["dropped_on_confirm"] == ["x"] and r2["kept"] == []
+    assert r2["confirm_scores"]["x"] == [0.8, 0.8, 0.8]
+    # 同理下端
+    it3 = iter([0.5, 0.2, 0.2, 0.2])
+    r3 = pb.screen_graded([{"id": "x"}], lambda c: next(it3), n=1, confirm_n=3, band=band)
+    assert r3["dropped_on_confirm"] == ["x"]
+    # 混合(两轮贴端一轮中段): 均分在区间内且非全贴端 -> 保留
+    it4 = iter([0.5, 0.8, 0.8, 0.5])
+    r4 = pb.screen_graded([{"id": "x"}], lambda c: next(it4), n=1, confirm_n=3, band=band)
+    assert [c["id"] for c in r4["kept"]] == ["x"], r4
+
+
+
+
+def test_screen_graded_confirm_n_and_mean_boundaries():
+    """五处边界: confirm_n=1 合法(不该被当成 0 拦掉)、复核里 mean 恰好等于 band 端点
+    算饱和、贴端判据用 >= 而非 >(恰在端点上就算贴端)。变异测试逐一指出这些未被覆盖。"""
+    band = (0.2, 0.8)
+    # confirm_n=1 必须合法 —— 它是最省的复核, 拦掉等于逼人跳过复核
+    it = iter([0.5, 0.5])
+    r = pb.screen_graded([{"id": "x"}], lambda c: next(it), n=1, confirm_n=1, band=band)
+    assert [c["id"] for c in r["kept"]] == ["x"] and r["confirm_scores"]["x"] == [0.5]
+    # n=1 同理
+    r = pb.screen_graded([{"id": "y"}], lambda c: 0.5, n=1, confirm_n=None, band=band)
+    assert [c["id"] for c in r["kept"]] == ["y"]
+    # 复核阶段 mean 恰好等于上界 -> 剔除(与一阶段的端点语义一致)
+    it2 = iter([0.5, 0.9, 0.7])          # 首轮 0.5 进复核; 复核均分 (0.9+0.7)/2 = 0.8
+    r2 = pb.screen_graded([{"id": "x"}], lambda c: next(it2), n=1, confirm_n=2, band=band)
+    assert r2["confirm_scores"]["x"] == [0.9, 0.7]
+    assert sum(r2["confirm_scores"]["x"]) / 2 == 0.8, "构造须让复核均分恰等于上界"
+    assert r2["dropped_on_confirm"] == ["x"], f"均分恰在上界应剔除: {r2}"
+    # 复核 mean 恰好等于下界 -> 同样剔除
+    it3 = iter([0.5, 0.3, 0.1])          # 复核均分 = 0.2
+    r3 = pb.screen_graded([{"id": "x"}], lambda c: next(it3), n=1, confirm_n=2, band=band)
+    assert sum(r3["confirm_scores"]["x"]) / 2 == 0.2
+    assert r3["dropped_on_confirm"] == ["x"], f"均分恰在下界应剔除: {r3}"
+    # 贴端判据是 >=: 每轮恰好等于上界即算贴端(此例均分也等于上界, 两条件同向)
+    it4 = iter([0.5, 0.8, 0.8])
+    r4 = pb.screen_graded([{"id": "x"}], lambda c: next(it4), n=1, confirm_n=2, band=band)
+    assert r4["dropped_on_confirm"] == ["x"]
+    # 而略低于上界的两轮(0.79)均分在区间内且未贴端 -> 保留, 证明 >= 不是把中段也误杀
+    it5 = iter([0.5, 0.79, 0.79])
+    r5 = pb.screen_graded([{"id": "x"}], lambda c: next(it5), n=1, confirm_n=2, band=band)
+    assert [c["id"] for c in r5["kept"]] == ["x"], f"0.79 未贴端应保留: {r5}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -471,6 +471,43 @@ def selfcheck(cases, llm, search, pmap=map, max_retries=1, corroborate=False):
             "fp_rate_ci": wilson_ci(fp, clean_n), "fp_details": fp_details}
 
 
+def trajectory_selfcheck(cases, llm, pmap=map):
+    """轨迹忠实性检测器的门禁, 与 selfcheck 同源(那个管 world 路由, 这个管 trajectory)。
+    cases: [{"observations": [...], "faithful": 忠实回答,
+             "planted": [{"response": 被篡改的回答, "expect": "distorted"|"fabricated",
+                          "desc": 说明}]}]
+    - faithful 回答的 claim 应全部 grounded, 任何非 grounded 记误报(fp_rate)。
+    - 每个 planted 回答必须至少命中一条 expect 类别的判定, 否则记漏检(recall)。
+    distorted 类在真实数据上极少自然出现(忠实模型不歪曲), 因此必须靠人工篡改来测灵敏度 ——
+    没有这道门禁, "零歪曲"既可能是模型忠实, 也可能是检测器瞎了, 两者无法区分。"""
+    total, caught, details = 0, 0, []
+    clean_n, fp, fp_details = 0, 0, []
+    for case in cases:
+        obs = case["observations"]
+        if case.get("faithful"):
+            claims = extract_claims(case["faithful"], llm)
+            got = list(pmap(lambda c: verify_trajectory(c["text"], obs, llm), claims))
+            clean_n += len(got)
+            bad = [r for r in got if r["verdict"] != "grounded"]
+            fp += len(bad)
+            fp_details += [{"claim": r["text"], "verdict": r["verdict"],
+                            "reasoning": r.get("reasoning", "")} for r in bad]
+        for p in case.get("planted") or []:
+            total += 1
+            claims = extract_claims(p["response"], llm)
+            got = list(pmap(lambda c: verify_trajectory(c["text"], obs, llm), claims))
+            hit = [r for r in got if r["verdict"] == p["expect"]]
+            caught += bool(hit)
+            details.append({"error": p["desc"], "expect": p["expect"], "caught": bool(hit),
+                            "verdicts": [r["verdict"] for r in got]})
+    return {"planted": total, "caught": caught,
+            "recall": caught / total if total else None,
+            "recall_ci": wilson_ci(caught, total), "details": details,
+            "clean_claims": clean_n, "false_positives": fp,
+            "fp_rate": fp / clean_n if clean_n else None,
+            "fp_rate_ci": wilson_ci(fp, clean_n), "fp_details": fp_details}
+
+
 
 # ---------------------------------------------------------------- 适配器参考实现
 

@@ -497,6 +497,47 @@ def test_detectable_effect():
 
 
 
+def test_trajectory_selfcheck():
+    """轨迹检测器门禁: 忠实回答不得误报, 篡改回答必须按期望类别命中。"""
+    obs = [{"tool_call_id": "tc_1", "tool": "s", "observation": "营收增长约4%"}]
+
+    def traj_llm(prompt, system, schema):
+        if system is ce.EXTRACT_SYSTEM:
+            key = "夸大" if "夸大" in prompt else ("编造" if "编造" in prompt else "忠实")
+            return {"claims": [{"text": f"{key}claim", "source_quote": "x", "verifiable": True,
+                                "importance": "core", "search_query": "q"}]}
+        if "夸大" in prompt:
+            return {"verdict": "distorted", "source_tool_call": "tc_1",
+                    "evidence_quote": "q", "reasoning": "r"}
+        if "编造" in prompt:
+            return {"verdict": "fabricated", "source_tool_call": None,
+                    "evidence_quote": "", "reasoning": "r"}
+        return {"verdict": "grounded", "source_tool_call": "tc_1",
+                "evidence_quote": "q", "reasoning": "r"}
+
+    g = ce.trajectory_selfcheck([{
+        "observations": obs, "faithful": "忠实的总结",
+        "planted": [{"response": "夸大的总结", "expect": "distorted", "desc": "数字夸大"},
+                    {"response": "编造的总结", "expect": "fabricated", "desc": "无据补充"}],
+    }], traj_llm)
+    assert g["planted"] == 2 and g["caught"] == 2 and g["recall"] == 1.0
+    assert g["clean_claims"] == 1 and g["false_positives"] == 0 and g["fp_rate"] == 0.0
+    assert g["recall_ci"] is not None and g["fp_rate_ci"] is not None
+    # 期望类别不符 = 漏检(抓到了但归错类,同样不合格)
+    g2 = ce.trajectory_selfcheck([{
+        "observations": obs, "planted": [
+            {"response": "夸大的总结", "expect": "fabricated", "desc": "错配类别"}]}], traj_llm)
+    assert g2["caught"] == 0, "判成distorted但期望fabricated: 记漏检"
+    # 忠实回答被判非grounded = 误报
+    fp_llm = lambda p, s, sch: (
+        {"claims": [{"text": "c", "source_quote": "x", "verifiable": True,
+                     "importance": "core", "search_query": "q"}]} if s is ce.EXTRACT_SYSTEM
+        else {"verdict": "fabricated", "source_tool_call": None,
+              "evidence_quote": "", "reasoning": "r"})
+    g3 = ce.trajectory_selfcheck([{"observations": obs, "faithful": "忠实的总结"}], fp_llm)
+    assert g3["false_positives"] == 1 and g3["fp_rate"] == 1.0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

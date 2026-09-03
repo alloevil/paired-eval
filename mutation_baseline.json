@@ -1,0 +1,24 @@
+{
+ "survivors": [
+  "answer_match.py|L110: const 1->2",
+  "answer_match.py|L98: const 1->2",
+  "claim_eval.py|L130: const 6000->6001",
+  "claim_eval.py|L174: const 1->2",
+  "claim_eval.py|L269: const 0->1",
+  "claim_eval.py|L286: const 0.0->1.0",
+  "claim_eval.py|L333: const 1->2",
+  "claim_eval.py|L368: GtE->Gt",
+  "claim_eval.py|L395: const 1->2",
+  "claim_eval.py|L412: Lt->LtE",
+  "claim_eval.py|L450: const 1->2",
+  "claim_eval.py|L451: Lt->LtE",
+  "claim_eval.py|L454: GtE->Gt",
+  "claim_eval.py|L455: const 10->11",
+  "claim_eval.py|L458: const 10->11",
+  "paired_bench.py|L376: And->Or",
+  "paired_bench.py|L411: Gt->GtE",
+  "paired_bench.py|L537: const 3->4",
+  "paired_bench.py|L538: const 2->3",
+  "paired_bench.py|L539: const 1->2"
+ ]
+}

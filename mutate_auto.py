@@ -9,6 +9,8 @@
 (丢注释、改引号、规范化)会让所有变异都"被杀死", 得出虚假的满分。
 
 用法: python3 mutate_auto.py [模块...] [--limit N] [--seed S]
+     python3 mutate_auto.py --baseline   # 全量跑并把已确认的等价变异写入基线
+     python3 mutate_auto.py --check      # 全量跑并与基线比对, 新增存活即失败(棘轮)
 
 
 存活变异必须分类, 不该盲目追 100%:
@@ -30,6 +32,7 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
 这类结论应记录而非补测: 为它们写的测试只会把实现细节钉死, 让合理重构无谓失败。
 """
 import ast
+import json
 import pathlib
 import random
 import subprocess
@@ -119,15 +122,20 @@ def suite_passes():
 
 
 def run(modules, limit=None, seed=0):
+    """全程 try/finally 保护: 变异会真的改写源文件, 中断(Ctrl-C/超时/异常)若不还原,
+    仓库会停在被变异的状态 —— 本工具第一次全量运行就因工具层超时踩到过,
+    留下一个被 unparse 的 paired_bench.py, 而后续运行的"空变异对照"如实报告了不可信。"""
     results = []
     for mod in modules:
         path = ROOT / mod
         original = path.read_text(encoding="utf-8")
-        tree = ast.parse(original)
-        # 对照: 空变异(仅 unparse)必须仍然全绿
-        path.write_text(ast.unparse(tree), encoding="utf-8")
-        baseline_ok = suite_passes()
-        path.write_text(original, encoding="utf-8")
+        try:
+            tree = ast.parse(original)
+            # 对照: 空变异(仅 unparse)必须仍然全绿
+            path.write_text(ast.unparse(tree), encoding="utf-8")
+            baseline_ok = suite_passes()
+        finally:
+            path.write_text(original, encoding="utf-8")
         if not baseline_ok:
             print(f"!! {mod}: unparse 空变异即失败, 该模块的变异结果不可信(跳过)")
             continue
@@ -138,23 +146,25 @@ def run(modules, limit=None, seed=0):
             idxs = sorted(random.Random(seed).sample(idxs, limit))
         print(f"== {mod}: {total} 个可变异点(已滤除默认参数/切片长度等已知等价类), "
               f"本次跑 {len(idxs)} 个 (unparse 对照通过)")
-        for i in idxs:
-            tree_i = ast.parse(original)
-            mut = _Mutator(i, _noise_constants(tree_i))
-            new_tree = mut.visit(tree_i)
-            if mut.applied is None:
-                continue
-            try:
-                src = ast.unparse(ast.fix_missing_locations(new_tree))
-            except Exception as exc:
-                print(f"  skip  {mut.applied} (unparse失败: {exc})")
-                continue
-            path.write_text(src, encoding="utf-8")
-            killed = not suite_passes()
-            path.write_text(original, encoding="utf-8")
-            results.append((mod, mut.applied, killed))
-            if not killed:
-                print(f"  SURVIVED  {mod} {mut.applied}")
+        try:
+            for i in idxs:
+                tree_i = ast.parse(original)
+                mut = _Mutator(i, _noise_constants(tree_i))
+                new_tree = mut.visit(tree_i)
+                if mut.applied is None:
+                    continue
+                try:
+                    src = ast.unparse(ast.fix_missing_locations(new_tree))
+                except Exception as exc:
+                    print(f"  skip  {mut.applied} (unparse失败: {exc})")
+                    continue
+                path.write_text(src, encoding="utf-8")
+                killed = not suite_passes()
+                results.append((mod, mut.applied, killed))
+                if not killed:
+                    print(f"  SURVIVED  {mod} {mut.applied}")
+        finally:
+            path.write_text(original, encoding="utf-8")   # 中断/异常也必须还原
     killed = sum(1 for _, _, k in results if k)
     print(f"\n杀伤率: {killed}/{len(results)}")
     for mod, desc, k in results:
@@ -163,9 +173,47 @@ def run(modules, limit=None, seed=0):
     return results
 
 
+BASELINE = ROOT / "mutation_baseline.json"
+
+
+def _survivors(results):
+    return sorted(f"{mod}|{desc}" for mod, desc, killed in results if not killed)
+
+
+def check_against_baseline(results, write=False):
+    """棘轮: 新增存活变异即失败。杀伤率是一次性成就, 除非把它钉成基线 ——
+    否则新增无测试保护的代码会让存活数静默上涨, 而 pre-commit 只看"测试通过"。
+    基线里记的是已分析确认的等价变异清单(见本文件顶部的五类分类)。"""
+    now = _survivors(results)
+    if write:
+        BASELINE.write_text(json.dumps({"survivors": now}, ensure_ascii=False, indent=1),
+                            encoding="utf-8")
+        print(f"基线已写入 {BASELINE.name}: {len(now)} 个已确认的等价变异")
+        return 0
+    if not BASELINE.exists():
+        print("!! 无基线文件, 先跑 --baseline 生成")
+        return 1
+    known = set(json.loads(BASELINE.read_text(encoding="utf-8"))["survivors"])
+    new = [s for s in now if s not in known]
+    fixed = [s for s in sorted(known) if s not in now]
+    for s in new:
+        print(f"  新增存活(测试缺口): {s}")
+    for s in fixed:
+        print(f"  已修补(可更新基线): {s}")
+    if new:
+        print(f"\n失败: {len(new)} 个新增存活变异 —— 新代码缺少能区分它的测试")
+        return 1
+    print(f"\n通过: 无新增存活(基线 {len(known)} 个, 本次 {len(now)} 个)")
+    return 0
+
+
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     opts = {a.split("=")[0]: a.split("=")[1] for a in sys.argv[1:] if "=" in a}
+    flags = {a for a in sys.argv[1:] if a.startswith("--") and "=" not in a}
     mods = args or ["claim_eval.py", "answer_match.py", "rubric_eval.py",
                     "eval_task.py", "paired_bench.py"]
-    run(mods, limit=int(opts.get("--limit", 0)) or None, seed=int(opts.get("--seed", 0)))
+    res = run(mods, limit=int(opts.get("--limit", 0)) or None,
+              seed=int(opts.get("--seed", 0)))
+    if flags & {"--baseline", "--check"}:
+        sys.exit(check_against_baseline(res, write="--baseline" in flags))

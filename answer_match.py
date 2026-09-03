@@ -127,23 +127,33 @@ def extract_answer(text, marker="答案"):
 
 def grade_answer(response, gold, kind="text", marker="答案", rel_tol=0.01):
     """SimpleQA 式三值判分。kind: "numeric" | "text"(选项/实体,gold 可为别名列表)。
-    集合类真值请直接用 match_set(需要结构化的预测列表,自由文本切分不可靠)。"""
+    集合类真值请直接用 match_set(需要结构化的预测列表,自由文本切分不可靠)。
+    not_attempted 带 reason 细分(只报机械可观测的状态,不猜意图):
+      "blank"   = 回答本身为空/纯空白
+      "no_slot" = 有实质内容但没有可解析的答案槽位
+    后者混进弃答会让"格式不合规"与"拒答"不可区分, 而它们是两种不同诊断:
+    no_slot 高 = 在测指令遵循而非能力(该收紧提示或放宽提取), blank 高 = 模型真的没答。"""
     extracted = extract_answer(response, marker)
     if extracted is None or not extracted.strip():
-        return {"verdict": "not_attempted", "extracted": None}
+        reason = "blank" if not str(response).strip() else "no_slot"
+        return {"verdict": "not_attempted", "extracted": None, "reason": reason}
     if kind == "numeric":
         ok = match_numeric(extracted, gold, rel_tol=rel_tol)
     else:
         ok = match_choice(extracted, gold)
-    return {"verdict": "correct" if ok else "incorrect", "extracted": extracted}
+    return {"verdict": "correct" if ok else "incorrect", "extracted": extracted, "reason": None}
 
 
 def aggregate_grades(grades):
-    """三值聚合:accuracy 的分母是 attempted,弃答率单列。"""
+    """三值聚合:accuracy 的分母是 attempted,弃答率单列并按 reason 细分。"""
     n = len(grades)
     cor = sum(g["verdict"] == "correct" for g in grades)
     att = sum(g["verdict"] != "not_attempted" for g in grades)
+    blank = sum(g.get("reason") == "blank" for g in grades)
+    no_slot = sum(g.get("reason") == "no_slot" for g in grades)
     return {"n": n, "correct": cor, "attempted": att,
             "accuracy_on_attempted": cor / att if att else None,
             "overall_accuracy": cor / n if n else None,
-            "not_attempted_rate": (n - att) / n if n else None}
+            "not_attempted_rate": (n - att) / n if n else None,
+            "blank": blank, "no_slot": no_slot,
+            "no_slot_rate": no_slot / n if n else None}

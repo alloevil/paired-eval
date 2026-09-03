@@ -64,6 +64,25 @@ def test_grade_and_aggregate():
     assert abs(agg["not_attempted_rate"] - 0.25) < 1e-9
 
 
+def test_non_attempt_reasons():
+    """not_attempted 必须细分: 空白 vs 有内容但无槽位(格式不合规) ——
+    混在一起就无法区分"模型没答"与"在测指令遵循"。"""
+    blank = am.grade_answer("   ", "42", kind="numeric")
+    assert blank["verdict"] == "not_attempted" and blank["reason"] == "blank"
+    no_slot = am.grade_answer("经过计算,结果大约是四十二左右。", "42", kind="numeric")
+    assert no_slot["verdict"] == "not_attempted" and no_slot["reason"] == "no_slot"
+    ok = am.grade_answer("答案: 42", "42", kind="numeric")
+    assert ok["verdict"] == "correct" and ok["reason"] is None
+    wrong = am.grade_answer("答案: 41", "42", kind="numeric")
+    assert wrong["verdict"] == "incorrect" and wrong["reason"] is None
+    agg = am.aggregate_grades([blank, no_slot, ok, wrong])
+    assert agg["blank"] == 1 and agg["no_slot"] == 1
+    assert abs(agg["no_slot_rate"] - 0.25) < 1e-9
+    assert agg["attempted"] == 2 and abs(agg["accuracy_on_attempted"] - 0.5) < 1e-9, \
+        "格式问题不该污染能力口径的分母"
+    assert abs(agg["not_attempted_rate"] - 0.5) < 1e-9, "两类都仍计入总弃答率"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

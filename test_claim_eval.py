@@ -579,6 +579,28 @@ def test_trajectory_importance_weighting():
     assert d["weighted_grounding_rate"] is None
 
 
+def test_planner_detail_mode():
+    """规划器内部算出的实际功效不该被丢弃: 网格搜索会跳过临界点,
+    余量常很大(实测 n=113 达 0.907), 只返回 n 会让调用者重做一遍蒙特卡洛。"""
+    plain = ce.required_tasks(0.4, 0.05, sims=200, seed=3)
+    det = ce.required_tasks(0.4, 0.05, sims=200, seed=3, detail=True)
+    assert det["n"] == plain, "detail 模式不改变 n"
+    assert det["power_target"] == 0.8 and det["alpha"] == 0.05
+    assert det["achieved_power"] >= det["power_target"], "达标点的实际功效必须≥目标"
+    assert 0.8 <= det["achieved_power"] <= 1.0
+    # 不可达时 detail 仍给出结构化的 None, 便于记录"试过但达不到"
+    unreach = ce.required_tasks(0.21, 0.20, sims=100, n_max=64, detail=True)
+    assert unreach["n"] is None and unreach["achieved_power"] is None
+    assert ce.required_tasks(0.21, 0.20, sims=100, n_max=64) is None, "非detail仍返回None"
+    # MDE 同样
+    mde_plain = ce.detectable_effect(56, sims=200, seed=4)
+    mde_det = ce.detectable_effect(56, sims=200, seed=4, detail=True)
+    assert mde_det["mde"] == mde_plain and mde_det["step"] == 0.01
+    assert mde_det["achieved_power"] >= mde_det["power_target"]
+    unreach2 = ce.detectable_effect(2, sims=100, detail=True)
+    assert unreach2["mde"] is None and unreach2["achieved_power"] is None
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

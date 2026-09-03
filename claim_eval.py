@@ -375,12 +375,16 @@ def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):
     }
 
 
-def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, seed=0):
+def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, seed=0,
+                   detail=False):
     """功效分析: 估算配对 A/B 需要多少任务才能以 power 的概率检出差异。
     p_win / p_loss = 每个任务上 A 胜 / 负于 B 的概率(其余平局), 要求 p_win > p_loss。
     内部用 mcnemar_exact 判定 —— 规划器与检验器必须用同一把尺子: 早先这里用符号检验的
     正态近似, 实测在规划出的 n 上精确检验只有 0.765 功效(目标 0.8), 即 n 被系统性低估。
     几何网格搜最小 n; n_max 内达不到返回 None。
+    detail=True 时返回 {"n","achieved_power","power_target","alpha"} —— 网格搜索会跳过
+    临界点, 实际功效常明显高于目标(实测 n=113 时达 0.907), 只返回 n 会让调用者
+    无从知晓这个余量, 要重做一遍蒙特卡洛才能得到内部早已算出的数。
     paired_compare/mcnemar 不显著时, 用它回答"还要加多少任务", 而不是反复重跑碰运气。"""
     if not 0 <= p_loss < p_win <= 1 or p_win + p_loss > 1:
         raise ValueError("需要 0 <= p_loss < p_win 且 p_win + p_loss <= 1")
@@ -402,17 +406,23 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
 
     n = 8
     while n <= n_max:
-        if power_at(n) >= power:
-            return n
+        achieved = power_at(n)
+        if achieved >= power:
+            return {"n": n, "achieved_power": achieved, "power_target": power,
+                    "alpha": alpha} if detail else n
         n = max(n + 4, int(n * 1.4))
-    return None
+    return {"n": None, "achieved_power": None, "power_target": power,
+            "alpha": alpha} if detail else None
 
 
-def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, step=0.01):
+def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, step=0.01,
+                      detail=False):
     """required_tasks 的反问题: 任务集固定为 n 时, 最小可检出的胜率是多少(MDE)。
     实践中任务集通常是给定的 —— 此时诚实报告需要的不是"再加多少题", 而是
     "这个任务集根本看不见小于多大的差异"。同样用 mcnemar_exact 判定, 与检验器一致。
-    返回最小 p_win(在 p_loss 固定下达到 power 的胜率), 上界内不可达则返回 None。"""
+    返回最小 p_win(在 p_loss 固定下达到 power 的胜率), 上界内不可达则返回 None。
+    detail=True 时返回 {"mde","achieved_power","power_target","alpha","step"} ——
+    网格步长决定精度, 达标点的实际功效通常高于目标, 这个余量不该被丢弃。"""
     if n < 1:
         raise ValueError("n >= 1")
     if not 0 <= p_loss < 1:
@@ -431,10 +441,14 @@ def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, st
                     b_only += 1
             if mcnemar_exact(a_only, b_only) < alpha:
                 hits += 1
-        if hits / sims >= power:
-            return round(p_win, 10)
+        achieved = hits / sims
+        if achieved >= power:
+            mde = round(p_win, 10)
+            return {"mde": mde, "achieved_power": achieved, "power_target": power,
+                    "alpha": alpha, "step": step} if detail else mde
         p_win = round(p_win + step, 10)
-    return None
+    return {"mde": None, "achieved_power": None, "power_target": power,
+            "alpha": alpha, "step": step} if detail else None
 
 
 # ---------------------------------------------------------------- orchestrators

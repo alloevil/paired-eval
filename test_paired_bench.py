@@ -583,6 +583,32 @@ def test_refusal_attribution():
     assert "picky" in r0["refusals"], "拒答方必须被点名"
 
 
+def test_batch_refusal_summary():
+    """批次级拒答率必须直接可读: 埋在逐题字典里等于没有 ——
+    一个系统拒答15%时, 它在剩下85%上的可比性本身就需要标注。
+    整题被弃(其 row 不入表)的拒答同样必须计入, 否则总数偏低。"""
+    tasks = pb.ALL_TASKS[:2]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    # b 侧只在第2题拒答且全拒 -> 该题整体被弃, 其拒答不得漏计
+    picky = lambda p: None if tasks[1]["instruction"] in p else good(p)
+    out = pb.run_paired_repeated(good, picky, tasks=tasks, n=3)
+    assert out["dropped"] == [tasks[1]["id"]], "第2题整体被弃"
+    assert out["attempts_per_side"] == 6, "2题×3轮"
+    assert out["refusals"] == {"a": 0, "b": 3}, \
+        f"整题被弃的3次拒答必须计入: {out['refusals']}"
+    assert out["refusal_rate"]["b"] == 0.5 and out["refusal_rate"]["a"] == 0.0
+    # N系统同样
+    inter = pb.run_interleaved({"ok": good, "picky": picky}, tasks=tasks, n=3)
+    assert inter["attempts_per_system"] == 6
+    assert inter["refusals"] == {"ok": 0, "picky": 3}
+    assert inter["refusal_rate"]["picky"] == 0.5
+    # 无拒答时为零而非None("零拒答"是明确事实)
+    clean = pb.run_interleaved({"g1": good, "g2": good}, tasks=tasks, n=2)
+    assert clean["refusals"] == {"g1": 0, "g2": 0}
+    assert clean["refusal_rate"] == {"g1": 0.0, "g2": 0.0}
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

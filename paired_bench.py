@@ -209,6 +209,7 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
           "dropped": [id], "compare": 逐题 pass@1 的配对检验}。
     refusals 记录该题各侧拒答次数 —— 一侧全拒与双侧偶发不是一回事。"""
     rows, dropped = [], []
+    total_refusals = {"a": 0, "b": 0}   # 循环内累计: 整题被弃的拒答也必须计入
     for t in tasks:
         per_rep, dropped_reps, orders, refusals = [], 0, [], {}
         for rep in range(n):
@@ -225,6 +226,7 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                 for s, r in (("a", ra), ("b", rb)):
                     if r is None:
                         refusals[s] = refusals.get(s, 0) + 1
+                        total_refusals[s] += 1
                 continue
 
             def ok(resp):
@@ -254,9 +256,14 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                                 [r["b_pass_at_1"] for r in rows])
     a_only = sum(a and not b for r in rows for a, b in r["per_rep"])
     b_only = sum(b and not a for r in rows for a, b in r["per_rep"])
+    attempts = len(tasks) * n
     return {"rows": rows, "dropped": dropped, "compare": compare,
             "discordant": {"a_only": a_only, "b_only": b_only,
-                           "mcnemar_p": ce.mcnemar_exact(a_only, b_only)}}
+                           "mcnemar_p": ce.mcnemar_exact(a_only, b_only)},
+            # 批次级拒答: 一侧拒答15%时, 它在剩下85%上的可比性本身需要标注
+            "refusals": total_refusals, "attempts_per_side": attempts,
+            "refusal_rate": {s: c / attempts if attempts else None
+                             for s, c in total_refusals.items()}}
 
 
 def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
@@ -266,13 +273,16 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
     run_repeated 等于"先把A测完再测B", 跨窗漂移与顺序效应会混进系统差异 ——
     据此曾得出一个假的"非单调能力洞"结论, 交错重测后差异归零。
     任一系统该轮拒答 -> 丢弃该轮(全系统同弃, 保持对齐); 全轮被弃 -> 丢弃该题。
-    返回 {"reports": {name: run_repeated 同构报告(附 orders)}, "dropped": [id]},
+    返回 {"reports": {name: run_repeated 同构报告(附 orders/refusals)}, "dropped": [id],
+    "refusals"/"refusal_rate"/"attempts_per_system": 批次级拒答归属 ——
+    某系统拒答15%时, 它在剩下85%上的可比性本身需要标注}。
     reports 可直接传给 reliability_matrix。"""
     names = list(models)
     if len(names) < 2:
         raise ValueError("至少需要两个系统")
     reports = {nm: [] for nm in names}
     dropped = []
+    total_refusals = {nm: 0 for nm in names}   # 批次级: 整题被弃的拒答也计入
     for t in tasks:
         prompt = prompt_prefix + t["instruction"]
         oks = {nm: [] for nm in names}
@@ -287,6 +297,7 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
                 for nm in names:
                     if got[nm] is None:
                         refusals[nm] = refusals.get(nm, 0) + 1
+                        total_refusals[nm] += 1
                 continue
             orders.append(order)
             for nm in names:
@@ -311,7 +322,11 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
                                 "measured_at": stamp})
     if not any(reports[nm] for nm in names):
         raise ValueError("全部任务被丢弃,无可比数据")
-    return {"reports": reports, "dropped": dropped}
+    attempts = len(tasks) * n
+    return {"reports": reports, "dropped": dropped,
+            "refusals": total_refusals, "attempts_per_system": attempts,
+            "refusal_rate": {nm: c / attempts if attempts else None
+                             for nm, c in total_refusals.items()}}
 
 
 def pairwise_compare(reports, max_span_s=3600, require_interleaved=True):

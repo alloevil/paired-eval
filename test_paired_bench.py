@@ -697,6 +697,75 @@ def test_run_paired_refusal_fields():
     assert out2["refusal_rate"]["b"] == 0.25 and out2["refusal_rate"]["a"] == 0.0
 
 
+
+
+def test_checker_exception_scores_zero():
+    """判定器抛异常必须记 0 分 —— 变异成 1.0 后存活, 意味着"输出连判定器都解析不了"
+    反而能得满分。if-json 的 check 遇到非法 JSON 就会抛。"""
+    t = next(x for x in pb.ALL_TASKS if x["id"] == "if-json")
+    good = lambda p: t["canonical"]
+    raises = lambda p: "这不是JSON"        # json.loads 抛异常
+    out = pb.run_paired(good, raises, tasks=[t])
+    row = out["rows"][0]
+    assert row["a"] == 1.0 and row["b"] == 0.0, f"抛异常侧必须0分: {row}"
+    assert out["compare"]["wins"] == 1
+
+
+def test_fixture_checker_thresholds():
+    """两个 fixture 检查器的阈值就是任务的操作定义, 必须钉住边界:
+    if-3lines 每行 <=4 字, if-nomoon 全句 >=5 字。变异这些阈值曾全部存活。"""
+    three = next(x for x in pb.ALL_TASKS if x["id"] == "if-3lines")
+    assert three["check"]("西瓜汁啊\n香蕉\n梨"), "恰好4字应通过"
+    assert not three["check"]("西瓜汁啊啊\n香蕉\n梨"), "5字应判错"
+    moon = next(x for x in pb.ALL_TASKS if x["id"] == "if-nomoon")
+    assert moon["check"]("卫星绕地球"), "恰好5字且含卫星、无月字应通过"
+    assert not moon["check"]("卫星绕地"), "4字应判错(长度下限)"
+    assert not moon["check"]("这是月球的卫星"), "含月字应判错"
+
+
+def test_interleaved_per_task_refusal_counts():
+    """交错路由逐题 refusals 的计数值此前只断言了"键存在", 没断言数值,
+    于是 .get 默认值与增量的变异都存活。"""
+    tasks = pb.ALL_TASKS[:1]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    flip = {"i": 0}
+
+    def two_of_four(p):
+        flip["i"] += 1
+        return None if flip["i"] % 2 == 0 else good(p)
+
+    out = pb.run_interleaved({"ok": good, "half": two_of_four}, tasks=tasks, n=4)
+    row = out["reports"]["ok"][0]
+    assert row["refusals"] == {"half": 2}, f"逐题拒答计数必须精确: {row['refusals']}"
+
+
+def test_matrix_window_boundary():
+    """reliability_matrix 的窗口比较也要钉边界(summarize 早已钉住, 这里一直没有):
+    跨度恰好等于上限应放行。同一条规则在两个函数里各有实现, 必须各自被测。"""
+    mk = lambda stamp: [{"id": "t", "n": 2, "successes": 2, "pass_at_1": 1.0,
+                         "pass_hat_k": 1.0, "runs": [True, True], "measured_at": stamp}]
+    edge = {"a": mk(1000.0), "b": mk(1000.0 - 3600)}
+    rows = pb.reliability_matrix(edge, max_span_s=3600, require_interleaved=False)
+    assert len(rows) == 1, "跨度恰好等于上限应放行"
+    over = {"a": mk(1000.0), "b": mk(1000.0 - 3600.001)}
+    try:
+        pb.reliability_matrix(over, max_span_s=3600, require_interleaved=False)
+        assert False, "略微超限必须拒绝"
+    except ValueError:
+        pass
+
+
+def test_make_model_exhausts_retries():
+    """重试耗尽时不得再多睡一次: i < tries-1 改成 <= 后存活,
+    因为此前用例总在最后一次之前就成功了。"""
+    naps = []
+    dead = pb.make_model(lambda p: (_ for _ in ()).throw(RuntimeError("down")),
+                         tries=3, sleep=naps.append)
+    assert dead("q") is None
+    assert naps == [2.0, 4.0], f"3次尝试只该睡2次(线性退避): {naps}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -18,8 +18,8 @@
   "claim_eval.py|required_tasks.power_at#2: Lt->LtE",
   "claim_eval.py|verify_world#0: const 1->2",
   "paired_bench.py|<module>#0: const 1->2",
-  "paired_bench.py|<module>#0: const 2->3",
-  "paired_bench.py|<module>#1: const 3->4",
+  "paired_bench.py|<module>#1: const 2->3",
+  "paired_bench.py|<module>#2: const 3->4",
   "paired_bench.py|pairwise_compare#2: And->Or",
   "paired_bench.py|reliability_matrix#1: Gt->GtE"
  ]

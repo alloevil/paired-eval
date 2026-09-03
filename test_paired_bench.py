@@ -830,6 +830,42 @@ def test_format_task_checkers():
     assert arr["check"]("  [1, 2, 3]  ") and yml["check"]("a: 1\nb: 2\n")
 
 
+
+
+def test_report_completeness_and_fallbacks():
+    """完整报告必须一次给全: 效应量+CI、双检验+Holm、不一致对分布+集中度、
+    有效样本、拒答、null 可排除范围。手工拼装时漏掉任何一项结论都会失真。"""
+    tasks = pb.ALL_TASKS[:4]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    bad_one = lambda p: "错" if tasks[0]["instruction"] in p else good(p)
+    out = pb.run_interleaved({"g": good, "b": bad_one}, tasks=tasks, n=3)
+    rp = pb.report(out["reports"], refusals=out["refusals"])
+    assert rp["saturation"]["informative"] == 1 and rp["saturation"]["n_tasks"] == 4
+    assert len(rp["pairs"]) == 1
+    pr = rp["pairs"][0]
+    assert pr["units"] == 12, f"逐轮单元数应为 4题×3轮: {pr['units']}"
+    assert pr["interpretation"]["n_units"] == 12, "null 界必须按逐轮单元数算"
+    for token in ("有效样本", "拒答", "Δ=", "CI95", "逐题p", "逐轮McNemar", "Holm",
+                  "不一致对", "集中度"):
+        assert token in rp["text"], f"报告缺少 {token}"
+    # 集中度为 None(无分歧)时文本用 n/a 而不是崩掉
+    same = pb.run_interleaved({"g1": good, "g2": good}, tasks=tasks, n=2)
+    rp2 = pb.report(same["reports"], refusals=same["refusals"])
+    assert "集中度=n/a" in rp2["text"], rp2["text"]
+    assert rp2["pairs"][0]["units"] == 8
+    # units 回退链: 无 runs 字段时退到 n, 再退到 0(合成报告场景)
+    synth = {"a": [{"id": "t", "n": 5, "successes": 5, "pass_at_1": 1.0,
+                    "pass_hat_k": 1.0}],
+             "b": [{"id": "t", "n": 5, "successes": 4, "pass_at_1": 0.8,
+                    "pass_hat_k": 0.8}]}
+    rp3 = pb.report(synth, require_interleaved=False)
+    assert rp3["pairs"][0]["units"] == 0, "无 runs 字段 -> 单元数 0"
+    assert rp3["pairs"][0]["interpretation"]["rules_out"] is None
+    assert "无信息" in rp3["pairs"][0]["interpretation"]["text"], \
+        "单元数为0时必须如实判为无信息的null, 而不是猜一个数"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

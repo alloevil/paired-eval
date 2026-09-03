@@ -662,8 +662,10 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
         lines.append(f"拒答: {refusals}")
     pairs = []
     for r in rows:
-        units = sum(len(x.get("runs", [])) for x in reports[r["a"]]) or r.get("n") or 0
-        # 逐轮 McNemar 是主检验(保留重复结构), 故 null 界按逐轮单元数算
+        # 逐轮 McNemar 是主检验(保留重复结构), 故 null 界按逐轮单元数算。
+        # 合成报告若无 runs 字段则单元数为 0 -> interpret 会如实判为"无信息的 null",
+        # 这比猜一个数更诚实(初版写了 `or r.get("n")` 回退, 但 compare 行里没有 n 键, 是死代码)。
+        units = sum(len(x.get("runs", [])) for x in reports[r["a"]])
         fake = {"n": units, "mean_diff": r["mean_diff"], "diff_ci": r["diff_ci"],
                 "p_value": r["p_mcnemar_holm"]}
         verdict = ce.interpret(fake, n_units=units, alpha=alpha)

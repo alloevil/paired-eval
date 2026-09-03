@@ -404,6 +404,51 @@ def test_holm_adjust():
 
 
 
+def test_mcnemar_calibration():
+    """McNemar 的实测一类错误率: H0(两系统同分布)下 p<0.05 的比例不得超标。
+    离散检验偏保守是允许的, 反常地低则说明失去功效, 故设双侧界。种子固定。"""
+    import random as _r
+    rng = _r.Random(101)
+    for p_succ, reps in [(0.5, 40), (0.8, 60)]:
+        trials, fp = 400, 0
+        for _ in range(trials):
+            a_only = b_only = 0
+            for _ in range(reps):
+                xa, xb = rng.random() < p_succ, rng.random() < p_succ
+                a_only += xa and not xb
+                b_only += xb and not xa
+            fp += ce.mcnemar_exact(a_only, b_only) < 0.05
+        rate = fp / trials
+        assert rate <= 0.075, f"一类错误超标 p={p_succ},reps={reps}: {rate:.3f}"
+    # 功效抽查(冒烟级,非精确功效分析): 真实单侧优势应被高频检出。
+    # 阈值 0.85 留出 MC 噪声余量 —— 实测该配置约 0.89, 卡在 0.90 是刀锋阈值。
+    hits = 0
+    for _ in range(200):
+        a_only = b_only = 0
+        for _ in range(20):
+            xa, xb = rng.random() < 0.9, rng.random() < 0.4
+            a_only += xa and not xb
+            b_only += xb and not xa
+        hits += ce.mcnemar_exact(a_only, b_only) < 0.05
+    assert hits / 200 >= 0.85, f"强效应下功效过低: {hits/200:.2f}"
+
+
+def test_holm_controls_fwer():
+    """实测 family-wise error rate: 5个独立检验全在H0下, 原始p会频繁误报,
+    Holm 校正后必须压到标称水平以内 —— 这就是多重比较校正的全部意义。"""
+    import random as _r
+    rng = _r.Random(202)
+    trials, raw_fp, holm_fp = 2000, 0, 0
+    for _ in range(trials):
+        pvals = [rng.random() for _ in range(5)]   # H0 下 p ~ U(0,1)
+        raw_fp += any(p < 0.05 for p in pvals)
+        holm_fp += any(p < 0.05 for p in ce.holm_adjust(pvals))
+    raw, holm = raw_fp / trials, holm_fp / trials
+    assert 0.17 <= raw <= 0.28, f"未校正FWER应接近1-0.95^5≈0.226: {raw:.3f}"
+    assert holm <= 0.06, f"Holm 校正后FWER应<=0.05(容MC噪声): {holm:.3f}"
+    assert holm < raw / 3, f"校正必须显著改善: raw={raw:.3f} holm={holm:.3f}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

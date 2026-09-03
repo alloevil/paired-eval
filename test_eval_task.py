@@ -432,6 +432,55 @@ def test_pair_one_sided_none():
     assert out["compare"]["n"] == 1
 
 
+
+
+def test_all_routes_reject_missing_deps():
+    """每条路由的依赖检查都要各自钉住: 此前只测过 retrieval 缺依赖,
+    于是 trajectory 那行的 or 改成 and 后存活(缺单个依赖就不再报错)。"""
+    obs = [{"tool_call_id": "tc_1", "tool": "s", "observation": "o"}]
+    llm = lambda p, s, sch: {"verdict": "grounded", "source_tool_call": "tc_1",
+                             "evidence_quote": "q", "reasoning": "r"}
+    traj = {"id": "t-dep", "verification": {"class": "trajectory"}}
+    rub = {"id": "r-dep", "verification": {"class": "rubric",
+           "criteria": [{"text": "条A", "weight": 1}]}}
+    cases = [
+        (traj, {"response": "DOC", "llm": llm}),                    # 缺 observations
+        (traj, {"response": "DOC", "observations": obs}),            # 缺 llm
+        (traj, {"llm": llm, "observations": obs}),                   # 缺 response
+        (rub, {"response": "DOC"}),                                  # 缺 llm
+        (rub, {"llm": llm}),                                         # 缺 response
+    ]
+    for task, kw in cases:
+        try:
+            et.evaluate(task, **kw)
+            assert False, f"{task['id']} 缺依赖却未报错: {sorted(kw)}"
+        except ValueError:
+            pass
+
+
+def test_repeat_edge_cases():
+    """两个边界: n=2 必须有标准差(> 1 改成 > 2 后存活);
+    全部分数为 None 时不得凭空报出 successes(and 改成 or 后存活)。"""
+    import rubric_eval as re_
+    flip = {"i": 0}
+
+    def alternating(prompt, system, schema):
+        flip["i"] += 1
+        return {"verdict": "met" if flip["i"] % 2 else "not_met", "reasoning": "r"}
+
+    t = {"id": "t-n2", "verification": {"class": "rubric",
+         "criteria": [{"text": "条A", "weight": 1}]}}
+    r2 = et.repeat_evaluate(t, n=2, response="R", llm=alternating)
+    assert r2["score_stdev"] is not None and r2["score_stdev"] > 0, \
+        f"n=2 应给出标准差: {r2['score_stdev']!r}"
+    # 全弃权 -> 每轮 score 均为 None
+    all_abstain = lambda p, s, sch: {"verdict": "abstain", "reasoning": "r"}
+    r0 = et.repeat_evaluate(t, n=3, response="R", llm=all_abstain)
+    assert r0["scores"] == [] and r0["mean_score"] is None
+    assert "successes" not in r0, "没有二值结果时不得报出 successes"
+    assert r0["score_stdev"] is None and r0["scored"] == 0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

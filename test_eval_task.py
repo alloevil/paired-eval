@@ -278,6 +278,27 @@ def test_grounding_policy():
 
 
 
+def test_reason_propagates_to_summary():
+    """grade_answer 的 reason 必须一路传到批次汇总: 单行有信号而报表看不见等于没有。
+    (这条缺陷是本仓库自己造成过的 —— 新增字段后忘了在分发层传递。)"""
+    rows = [
+        et.evaluate(T_EXACT, response="答案: 8635亿"),                 # correct
+        et.evaluate(T_EXACT, response="大约是八千多亿元吧"),            # no_slot
+        et.evaluate(T_EXACT, response="   "),                          # blank
+    ]
+    assert rows[0]["details"]["reason"] is None
+    assert rows[1]["details"]["reason"] == "no_slot"
+    assert rows[2]["details"]["reason"] == "blank"
+    s = et.summarize(rows)
+    ex = s["classes"]["exact"]
+    assert ex["non_attempt_reasons"] == {"no_slot": 1, "blank": 1}
+    assert ex["n"] == 3 and ex["scored"] == 3, "弃答记0分仍计入,只是原因另有出口"
+    # 无 reason 的类别不该凭空冒出该字段
+    clean = et.summarize([rows[0]])
+    assert clean["classes"]["exact"]["non_attempt_reasons"] is None
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

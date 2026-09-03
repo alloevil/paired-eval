@@ -89,7 +89,8 @@ def evaluate(task, response=None, observations=None,
                             rel_tol=v.get("rel_tol", 0.01))
         return _finish({**base, "score": 1.0 if g["verdict"] == "correct" else 0.0,
                         "verdict": g["verdict"], "metrics": None,
-                        "details": {"extracted": g["extracted"], "gold": v["gold"]}})
+                        "details": {"extracted": g["extracted"], "gold": v["gold"],
+                                    "reason": g.get("reason")}})
 
     if cls == "retrieval":
         if response is None or llm is None or search is None:
@@ -163,17 +164,22 @@ def summarize(rows, strict_fp=True, max_span_s=3600):
     by_class = {}
     for r in rows:
         g = by_class.setdefault(r["verification_class"],
-                                {"n": 0, "scores": [], "cost": {}})
+                                {"n": 0, "scores": [], "cost": {}, "reasons": {}})
         g["n"] += 1
         if r["score"] is not None:
             g["scores"].append(r["score"])
         for k, val in (r.get("cost") or {}).items():
             g["cost"][k] = g["cost"].get(k, 0) + val
+        # 非作答原因(blank/no_slot)必须在批次层可见: 单行有信号而报表看不见等于没有
+        reason = (r.get("details") or {}).get("reason") if isinstance(r.get("details"), dict) else None
+        if reason:
+            g["reasons"][reason] = g["reasons"].get(reason, 0) + 1
     classes = {}
     for cls, g in by_class.items():
         classes[cls] = {"n": g["n"], "scored": len(g["scores"]),
                         "mean_score": sum(g["scores"]) / len(g["scores"]) if g["scores"] else None,
-                        "cost": g["cost"] or None}
+                        "cost": g["cost"] or None,
+                        "non_attempt_reasons": g["reasons"] or None}
     return {"verifier_fp": fps[0] if len(fps) == 1 else fps, "n": len(rows),
             "classes": classes}
 

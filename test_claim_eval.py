@@ -842,6 +842,46 @@ def test_simulation_comparison_boundaries():
     assert ce.required_tasks(0.5, 0.0, sims=3, n_max=16, rand=lambda: 0.49) == 8
 
 
+
+
+def test_expr_whitelist_not_redundant():
+    """白名单正则不是可有可无的第二道锁: 空 builtins 沙箱只挡住 __import__ 这类,
+    而"1 and 2"这种纯语法表达式沙箱照样执行。此前的恶意探针恰好被沙箱挡住,
+    于是把正则检查短路掉(or 改 and)后存活 —— 正则的作用一直没被验证。"""
+    obs = [{"tool_call_id": "tc_1", "observation": "x"}]
+    sneaky = lambda p, s, sch: {"computable": True, "expression": "1 and 2",
+                               "claimed_value": 2, "inputs": []}
+    r = ce.verify_derived("绕过沙箱的合法表达式", obs, sneaky)
+    assert r["verdict"] == "bad-expression", \
+        f"非算术表达式必须被正则拦下(而不是靠沙箱): {r['verdict']}"
+    boolish = lambda p, s, sch: {"computable": True, "expression": "True + 1",
+                                 "claimed_value": 2, "inputs": []}
+    assert ce.verify_derived("布尔混入", obs, boolish)["verdict"] == "bad-expression"
+
+
+def test_pass_hat_k_equality_and_smoothing():
+    """两处从未被覆盖的精确值: successes 恰好等于 k; 置换检验的 +1 平滑。"""
+    # successes == k: 边界既非"不足"也非"全过", 必须给 C(k,k)/C(n,k)
+    assert abs(ce.pass_hat_k(4, 8, 4) - 1 / 70) < 1e-12
+    assert abs(ce.pass_hat_k(3, 5, 3) - 1 / 10) < 1e-12
+    # +1 平滑保证 p 永不为 0(否则会报出"绝对确定"的假结论)
+    c = ce.paired_compare([1.0] * 20, [0.0] * 20, n_resamples=100)
+    assert abs(c["p_value"] - 1 / 101) < 1e-12, \
+        f"最极端情形的 p 应为 1/(n+1)=1/101, 得到 {c['p_value']}"
+    assert c["p_value"] > 0, "p 值永不为零"
+
+
+def test_planner_extreme_valid_inputs():
+    """两个合法极值此前从未被接受性测试: p_win=1.0(必胜, 需 p_loss=0);
+    detectable_effect(n=1)(合法但功效不可达, 应返回 None 而不是报错)。"""
+    assert ce.required_tasks(1.0, 0.0, sims=2, n_max=8, rand=lambda: 0.0) == 8
+    assert ce.detectable_effect(1, sims=2, rand=lambda: 0.0) is None, \
+        "n=1 是合法输入: 最多1个不一致对, 永不显著 -> None"
+    # MDE 的 hits 计数器必须从 0 起: sims=1 时初值1会让功效直接变成 1.0
+    assert ce.detectable_effect(20, sims=1, rand=lambda: 1.0) is None, \
+        "恒不胜 -> 功效 0 -> 不可达; hits 初值若为 1 则会误判首个网格点达标"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

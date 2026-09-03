@@ -169,6 +169,49 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
     return report
 
 
+def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
+                        prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
+    """交错重复配对: 每题每轮先A后B紧邻调用。漂移同时作用于两侧,配对差值仍然有效。
+    对比: 先把A全测完再测B(常见做法)会把跨窗口漂移误读成系统差异 ——
+    本仓库实测同一模型同一题两个时间窗得 0/8 与 8/8, 顺序测法下这会变成一个假结论。
+    任一侧该轮拒答则丢弃该轮(两侧同弃,保持配对); 全轮被弃则丢弃该题。
+    返回 {"rows": [...逐题双侧 successes/pass@1/pass^k 与 per_rep...],
+          "dropped": [id], "compare": 逐题 pass@1 的配对检验}。"""
+    rows, dropped = [], []
+    for t in tasks:
+        per_rep, dropped_reps = [], 0
+        for _ in range(n):
+            ra = model_a(prompt_prefix + t["instruction"])
+            rb = model_b(prompt_prefix + t["instruction"])
+            if ra is None or rb is None:
+                dropped_reps += 1
+                continue
+
+            def ok(resp):
+                try:
+                    return bool(t["check"](str(resp)))
+                except Exception:
+                    return False
+            per_rep.append((ok(ra), ok(rb)))
+        if not per_rep:
+            dropped.append(t["id"])
+            continue
+        eff = len(per_rep)
+        sa = sum(x for x, _ in per_rep)
+        sb = sum(y for _, y in per_rep)
+        rows.append({"id": t["id"], "n": eff, "dropped_reps": dropped_reps,
+                     "a_successes": sa, "b_successes": sb,
+                     "a_pass_at_1": sa / eff, "b_pass_at_1": sb / eff,
+                     "a_pass_hat_k": ce.pass_hat_k(sa, eff, min(k, eff)),
+                     "b_pass_hat_k": ce.pass_hat_k(sb, eff, min(k, eff)),
+                     "per_rep": per_rep, "measured_at": time.time()})
+    if not rows:
+        raise ValueError("全部任务被丢弃,无可比数据")
+    compare = ce.paired_compare([r["a_pass_at_1"] for r in rows],
+                                [r["b_pass_at_1"] for r in rows])
+    return {"rows": rows, "dropped": dropped, "compare": compare}
+
+
 def reliability_matrix(reports, divergence=0.25, max_span_s=3600):
     """多系统 run_repeated 报告透视: 每题一行,各系统 pass@1 并排,
     spread = 跨系统最大差距, spread >= divergence 标为分歧项。

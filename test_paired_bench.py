@@ -198,6 +198,46 @@ def test_measurement_window_guard():
 
 
 
+def test_paired_repeated_survives_drift():
+    """交错配对的核心性质: 全局漂移(两侧同时变差)不产生假差异;
+    真实单侧差异照常检出; 拒答按轮成对丢弃,配对不破。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] in ("if-upper", "if-pi8")]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    state = {"i": 0}
+
+    def drifting(prompt):   # 前半窗全对, 后半窗全错 —— 对两侧同等作用
+        state["i"] += 1
+        return canon[[k for k in canon if k in prompt][0]] if state["i"] <= 16 else "错"
+
+    out = pb.run_paired_repeated(drifting, drifting, tasks=tasks, n=8)
+    c = out["compare"]
+    assert c["wins"] == 0 and c["losses"] == 0, f"漂移不得制造假差异: {c}"
+    assert all(r["a_pass_at_1"] == r["b_pass_at_1"] for r in out["rows"])
+    # 真实单侧差异仍可检出
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    bad = lambda p: "错误输出"
+    out2 = pb.run_paired_repeated(good, bad, tasks=tasks, n=4)
+    assert out2["compare"]["wins"] == 2 and out2["compare"]["losses"] == 0
+    assert all(r["a_pass_hat_k"] == 1.0 and r["b_pass_hat_k"] == 0.0 for r in out2["rows"])
+    # 拒答: 该轮两侧同弃, n 降为有效轮数
+    flaky = {"i": 0}
+
+    def sometimes_none(p):
+        flaky["i"] += 1
+        return None if flaky["i"] % 2 == 0 else good(p)
+
+    out3 = pb.run_paired_repeated(good, sometimes_none, tasks=tasks[:1], n=4)
+    row = out3["rows"][0]
+    assert row["dropped_reps"] + row["n"] == 4 and row["n"] == len(row["per_rep"])
+    # 全灭仍响亮
+    try:
+        pb.run_paired_repeated(lambda p: None, good, tasks=tasks[:1], n=2)
+        assert False, "全部丢弃应报错"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -10,6 +10,8 @@
   "claim_eval.py|detectable_effect#3: const 1->2",
   "claim_eval.py|detectable_effect#4: Lt->LtE",
   "claim_eval.py|holm_adjust#1: const 0.0->1.0",
+  "claim_eval.py|interpret#0: GtE->Gt",
+  "claim_eval.py|interpret#0: const 1->2",
   "claim_eval.py|mcnemar_exact#2: const 0->1",
   "claim_eval.py|paired_compare#0: GtE->Gt",
   "claim_eval.py|required_tasks#0: const 1->2",

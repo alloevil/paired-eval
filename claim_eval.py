@@ -19,6 +19,7 @@
     pass_hat_k(successes, n, k)           # 可靠性: n 次运行中任取 k 次全过的概率
     mcnemar_exact(n_a_only, n_b_only)     # 二值配对: 不一致对的精确双侧检验
     holm_adjust(pvalues)                  # 多重比较: Holm-Bonferroni 控制 FWER
+    interpret(compare, n_units)           # 结论翻译: null 强制附可排除范围
 适配:
     Meter / make_resilient / throttled_pmap   # 成本计量 / 有界重试 / 限并发
 """
@@ -458,6 +459,39 @@ def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, st
         p_win = round(p_win + step, 10)
     return {"mde": None, "achieved_power": None, "power_target": power,
             "alpha": alpha, "step": step} if detail else None
+
+
+def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0):
+    """把配对比较结果翻译成可报告结论 —— null 分支强制附"能排除多大效应"。
+    不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
+    而那个设计只有 16 个配对单元, MDE=0.46, 实际只能排除 >=46% 的效应。
+    n_units: 配对单元数(逐题或逐轮), 默认取 compare["n"]。
+    返回 {"verdict","p_value","mean_diff","diff_ci","n_units","rules_out","text"}:
+      verdict="significant" -> 报效应量与区间
+      verdict="null"        -> rules_out=该设计的 MDE(None 表示样本量下不可达,
+                               即这条 null 无信息, 不能当证据用)
+    """
+    n = n_units if n_units is not None else compare["n"]
+    p = compare["p_value"]
+    out = {"p_value": p, "mean_diff": compare["mean_diff"],
+           "diff_ci": compare["diff_ci"], "n_units": n, "rules_out": None}
+    if p < alpha:
+        out["verdict"] = "significant"
+        out["text"] = (f"显著: Δ={compare['mean_diff']:+.3f} "
+                       f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}] "
+                       f"p={p:.4f} (n={n})")
+        return out
+    mde = detectable_effect(n, alpha=alpha, sims=sims, seed=seed) if n >= 1 else None
+    out["verdict"] = "null"
+    out["rules_out"] = mde
+    if mde is None:
+        out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
+                       f"不能当作『无差异』的证据")
+    else:
+        out["text"] = (f"未检出差异: p={p:.3f}, 该设计只能排除 >={mde:.0%} 的单方面胜率 "
+                       f"(n={n}, 点估计 Δ={compare['mean_diff']:+.3f}); "
+                       f"低于此的效应无法排除")
+    return out
 
 
 # ---------------------------------------------------------------- orchestrators

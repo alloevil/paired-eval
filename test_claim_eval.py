@@ -882,6 +882,53 @@ def test_planner_extreme_valid_inputs():
         "恒不胜 -> 功效 0 -> 不可达; hits 初值若为 1 则会误判首个网格点达标"
 
 
+
+
+def test_interpret_forces_null_bounds():
+    """null 结论必须自带"能排除多大效应" —— 本仓库曾把 16 单元(MDE=0.46)的
+    Δ=0.000 写成"效应根本不存在"。三个分支: 显著 / 有界的null / 无信息的null。"""
+    sig = ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20))
+    assert sig["verdict"] == "significant" and sig["rules_out"] is None
+    assert "显著" in sig["text"] and "CI95" in sig["text"]
+    # 小样本 null: MDE 不可达 -> 必须标为无信息, 不许被当成"无差异"
+    weak = ce.interpret(ce.paired_compare([1.0, 0.0], [1.0, 0.0]))
+    assert weak["verdict"] == "null" and weak["rules_out"] is None
+    assert "无信息" in weak["text"]
+    # 大样本 null: 必须给出具体可排除范围
+    tight = ce.interpret(ce.paired_compare([1.0, 0.0] * 8, [1.0, 0.0] * 8), n_units=80)
+    assert tight["verdict"] == "null" and tight["rules_out"] == 0.1
+    assert "只能排除" in tight["text"] and "10%" in tight["text"]
+    assert tight["n_units"] == 80, "n_units 可显式指定(逐轮单元数≠逐题数)"
+    # 默认取 compare["n"]
+    d = ce.interpret(ce.paired_compare([1.0] * 5, [0.0] * 5))
+    assert d["n_units"] == 5
+    # alpha 可调: 放宽后同一结果可能翻为显著
+    borderline = ce.paired_compare([1.0] * 6, [0.0] * 6)
+    assert ce.interpret(borderline, alpha=0.001)["verdict"] == "null"
+    assert ce.interpret(borderline, alpha=0.05)["verdict"] == "significant"
+
+
+
+
+def test_interpret_boundaries():
+    """三处边界: p 恰好等于 alpha 算不显著(严格小于); n_units=1 仍要给出结论;
+    n_units=0 不得去跑 MDE(会崩)。棘轮在 interpret 入库时抓到这三处缺测。"""
+    c = ce.paired_compare([1.0] * 20, [0.0] * 20)
+    p = c["p_value"]                       # 1/10001
+    # alpha 恰好等于 p: 严格小于 -> 判 null(不显著)
+    at = ce.interpret(c, alpha=p)
+    assert at["verdict"] == "null", f"p == alpha 应判不显著: p={p}"
+    just_above = ce.interpret(c, alpha=p * 1.0001)
+    assert just_above["verdict"] == "significant", "alpha 略大于 p 才算显著"
+    # n_units=1: 合法, 走 MDE 分支(1 个单元必然不可达)
+    one = ce.interpret(c, n_units=1, alpha=p)
+    assert one["verdict"] == "null" and one["rules_out"] is None and one["n_units"] == 1
+    # n_units=0: 不得调用 detectable_effect(它要求 n>=1), 应直接给无信息结论
+    zero = ce.interpret(c, n_units=0, alpha=p)
+    assert zero["verdict"] == "null" and zero["rules_out"] is None and zero["n_units"] == 0
+    assert "无信息" in zero["text"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -265,6 +265,44 @@ def test_call_order_alternates_and_cancels_bias():
 
 
 
+def test_run_interleaved_rotates_and_feeds_matrix():
+    """N系统交错: 顺序逐轮轮转, 首位优势在 n=系统数 的整数倍下完全对消;
+    输出直接喂 reliability_matrix(同窗同轮次, 无跨窗混淆)。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] in ("if-upper", "if-pi8")]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    slot = {"i": 0}
+
+    def first_wins(prompt):   # 每轮三次调用中第一次答对,其余答错
+        slot["i"] += 1
+        return canon[[k for k in canon if k in prompt][0]] if slot["i"] % 3 == 1 else "错"
+
+    models = {"m1": first_wins, "m2": first_wins, "m3": first_wins}
+    out = pb.run_interleaved(models, tasks=tasks, n=3)
+    reps = out["reports"]
+    assert set(reps) == {"m1", "m2", "m3"} and not out["dropped"]
+    assert reps["m1"][0]["orders"] == [["m1", "m2", "m3"], ["m2", "m3", "m1"],
+                                      ["m3", "m1", "m2"]], "顺序逐轮轮转"
+    for nm in models:
+        assert reps[nm][0]["successes"] == 1, f"{nm} 应各得一次首位优势"
+    rows = pb.reliability_matrix(reps)
+    assert len(rows) == 2 and not any(r["divergent"] for r in rows), \
+        "纯顺序效应不得在矩阵里显示为系统差异"
+    # 真实差异仍可见
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    rows2 = pb.reliability_matrix(pb.run_interleaved(
+        {"good": good, "bad": lambda p: "错", "also_good": good}, tasks=tasks, n=2)["reports"])
+    assert all(r["good"] == 1.0 and r["bad"] == 0.0 and r["divergent"] for r in rows2)
+    # 单系统拒绝; 全弃响亮
+    for bad_call in (lambda: pb.run_interleaved({"only": good}, tasks=tasks),
+                     lambda: pb.run_interleaved({"a": lambda p: None, "b": good}, tasks=tasks, n=2)):
+        try:
+            bad_call()
+            assert False, "应报错"
+        except ValueError:
+            pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

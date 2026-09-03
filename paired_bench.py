@@ -231,6 +231,57 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
     return {"rows": rows, "dropped": dropped, "compare": compare}
 
 
+def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
+                    prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
+    """N 系统交错重复: 每题每轮把所有系统紧邻调用一次, 调用顺序逐轮轮转。
+    这是构建 reliability_matrix 的正确路径。反例(本仓库真实教训): 逐系统分别调
+    run_repeated 等于"先把A测完再测B", 跨窗漂移与顺序效应会混进系统差异 ——
+    据此曾得出一个假的"非单调能力洞"结论, 交错重测后差异归零。
+    任一系统该轮拒答 -> 丢弃该轮(全系统同弃, 保持对齐); 全轮被弃 -> 丢弃该题。
+    返回 {"reports": {name: run_repeated 同构报告(附 orders)}, "dropped": [id]},
+    reports 可直接传给 reliability_matrix。"""
+    names = list(models)
+    if len(names) < 2:
+        raise ValueError("至少需要两个系统")
+    reports = {nm: [] for nm in names}
+    dropped = []
+    for t in tasks:
+        prompt = prompt_prefix + t["instruction"]
+        oks = {nm: [] for nm in names}
+        resps = {nm: [] for nm in names}
+        orders, dropped_reps = [], 0
+        for rep in range(n):
+            shift = rep % len(names)
+            order = names[shift:] + names[:shift]
+            got = {nm: models[nm](prompt) for nm in order}
+            if any(got[nm] is None for nm in names):
+                dropped_reps += 1
+                continue
+            orders.append(order)
+            for nm in names:
+                try:
+                    oks[nm].append(bool(t["check"](str(got[nm]))))
+                except Exception:
+                    oks[nm].append(False)
+                resps[nm].append(str(got[nm])[:_TRAIL_CAP])
+        if not orders:
+            dropped.append(t["id"])
+            continue
+        eff = len(orders)
+        stamp = time.time()
+        for nm in names:
+            s = sum(oks[nm])
+            reports[nm].append({"id": t["id"], "n": eff, "successes": s,
+                                "pass_at_1": s / eff,
+                                "pass_hat_k": ce.pass_hat_k(s, eff, min(k, eff)),
+                                "runs": oks[nm], "responses": resps[nm],
+                                "dropped_reps": dropped_reps, "orders": orders,
+                                "measured_at": stamp})
+    if not any(reports[nm] for nm in names):
+        raise ValueError("全部任务被丢弃,无可比数据")
+    return {"reports": reports, "dropped": dropped}
+
+
 def reliability_matrix(reports, divergence=0.25, max_span_s=3600):
     """多系统 run_repeated 报告透视: 每题一行,各系统 pass@1 并排,
     spread = 跨系统最大差距, spread >= divergence 标为分歧项。

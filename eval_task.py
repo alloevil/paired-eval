@@ -110,8 +110,9 @@ def evaluate(task, response=None, observations=None,
             raise ValueError(f"task {task['id']}: grounding_policy 只能是 "
                              "must_ground / allow_parametric")
         claims = ce.extract_claims(response, llm)
+        # 合并 claim 元数据(importance 等): 只传 text 会让加权口径失效
         results = list(pmap(
-            lambda c: ce.verify_trajectory(c["text"], observations, llm), claims))
+            lambda c: {**c, **ce.verify_trajectory(c["text"], observations, llm)}, claims))
         m = ce.aggregate_trajectory(results)
         m["grounding_policy"] = policy
         if policy == "allow_parametric":

@@ -318,18 +318,32 @@ def aggregate_world(results):
 
 
 def aggregate_trajectory(results):
-    """轨迹忠实性聚合。同时给计数与比率 —— grounding policy 需要按计数重算分母
-    (真但无据的 claim 是否算违规, 取决于任务要求全部有据还是允许参数知识)。"""
+    """轨迹忠实性聚合。三层输出:
+    - 计数(grounded/distorted/fabricated): grounding policy 需要按计数重算分母。
+    - 未加权比率: 每条 claim 等权。
+    - 加权比率(仅当每条都带合法 importance 时给出): 与 world 路由的 weighted_precision
+      同源 —— 核心事实被编造与边角细节被编造不该记同一笔账, 丢掉 importance
+      等于让重大幻觉被大量无害细节稀释。"""
     n = len(results) or 1
     count = lambda v: sum(r["verdict"] == v for r in results)
-    return {
+    out = {
         "n": len(results),
         "grounded": count("grounded"), "distorted": count("distorted"),
         "fabricated": count("fabricated"),
         "grounding_rate": count("grounded") / n,
         "distortion_rate": count("distorted") / n,
         "fabrication_rate": count("fabricated") / n,
+        "weighted_grounding_rate": None, "weighted_fabrication_rate": None,
+        "weighted_distortion_rate": None,
     }
+    if results and all(r.get("importance") in WEIGHTS for r in results):
+        total_w = sum(WEIGHTS[r["importance"]] for r in results)
+        wsum = lambda v: sum(WEIGHTS[r["importance"]] for r in results if r["verdict"] == v)
+        out.update(total_weight=total_w,
+                   weighted_grounding_rate=wsum("grounded") / total_w,
+                   weighted_distortion_rate=wsum("distorted") / total_w,
+                   weighted_fabrication_rate=wsum("fabricated") / total_w)
+    return out
 
 
 def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):

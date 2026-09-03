@@ -557,6 +557,28 @@ def test_unconfirmed_contradictions_surfaced():
 
 
 
+def test_trajectory_importance_weighting():
+    """核心事实被编造 与 边角细节被编造 不该记同一笔账。
+    丢掉 importance 会让重大幻觉被大量无害细节稀释。"""
+    mkr = lambda verdict, imp: {"text": "t", "verdict": verdict, "importance": imp}
+    # 情形A: 编造的是核心条(权重3), 3条grounded细节(各1) -> 未加权 3/4, 加权 3/6
+    a = ce.aggregate_trajectory([mkr("fabricated", "core")] + [mkr("grounded", "detail")] * 3)
+    assert a["grounding_rate"] == 0.75
+    assert abs(a["weighted_grounding_rate"] - 0.5) < 1e-9
+    assert abs(a["weighted_fabrication_rate"] - 0.5) < 1e-9, "核心幻觉占一半权重"
+    # 情形B: 编造的是细节, grounded 是核心 -> 未加权同为 3/4, 加权大不同
+    b = ce.aggregate_trajectory([mkr("fabricated", "detail")] + [mkr("grounded", "core")] * 3)
+    assert b["grounding_rate"] == a["grounding_rate"], "未加权口径无法区分两种情形"
+    assert abs(b["weighted_grounding_rate"] - 9 / 10) < 1e-9
+    assert abs(b["weighted_fabrication_rate"] - 1 / 10) < 1e-9
+    # 无 importance(独立 run_trajectory 只传文本)时加权字段为 None, 不报假数
+    c = ce.aggregate_trajectory([{"text": "t", "verdict": "grounded"}])
+    assert c["grounding_rate"] == 1.0 and c["weighted_grounding_rate"] is None
+    # 非法 importance 同样降级为 None 而非崩溃
+    d = ce.aggregate_trajectory([{"text": "t", "verdict": "grounded", "importance": "huge"}])
+    assert d["weighted_grounding_rate"] is None
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

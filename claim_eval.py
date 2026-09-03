@@ -379,6 +379,11 @@ def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):
         "n": n, "mean_diff": mean_diff,
         "wins": sum(d > 0 for d in diffs), "losses": sum(d < 0 for d in diffs),
         "ties": sum(d == 0 for d in diffs),
+        # 有效对数 = 非零差值的对数。符号翻转对零差值对是恒等操作, 故它们不进入
+        # 置换分布, 可达的最小 p 是 2/2^n_effective 而非 2/2^n。实测(第120轮):
+        # 5 对零差 + 1 对满差, p=1.0000 恰是 p_floor(1), 与 p_floor(6)=0.031 无关。
+        # interpret 默认拿它当 p 地板的基数 —— 与第119轮 McNemar 那处同一个 bug 类。
+        "n_effective": n - sum(d == 0 for d in diffs),
         "p_value": p_value, "diff_ci": (lo, hi),
     }
 
@@ -509,7 +514,10 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
     """
     n = n_units if n_units is not None else compare["n"]
     p = compare["p_value"]
-    fn = n if floor_n is None else max(1, floor_n)
+    # 地板基数优先级: 显式 floor_n(如 report 传 McNemar 的不一致对) > compare 自报的
+    # 有效对数(置换检验的非零差值对) > 单元数。三者语义不同, 混用就是第119/120轮的 bug。
+    fn = floor_n if floor_n is not None else compare.get("n_effective", n)
+    fn = max(1, fn)
     out = {"p_value": p, "mean_diff": compare["mean_diff"],
            "diff_ci": compare["diff_ci"], "n_units": n, "rules_out": None,
            "p_floor": p_floor(fn) if n >= 1 else None}
@@ -529,7 +537,13 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
     floor = out["p_floor"]
     if floor >= alpha:   # 地板等于 alpha 时显著性也不可达(判据是 p < alpha)
         # p 被样本量地板卡死: 效应再大也拿不到显著, 报"不显著"是误导
-        basis = "配对单元" if floor_n is None else "不一致对"
+        # 三种基数各有不同的补救处方, 措辞必须点明是哪一种
+        if floor_n is not None:
+            basis = "不一致对"          # McNemar: 要么加轮次, 要么换能拉开差距的题
+        elif "n_effective" in compare and compare["n_effective"] < n:
+            basis = "非零差值对"        # 置换: 有单元但差值为零, 加轮次未必有用
+        else:
+            basis = "配对单元"          # 单纯样本少, 加轮次即可
         try:
             need = f"需至少 {min_units_for_alpha(alpha)} 个{basis}"
         except ValueError:

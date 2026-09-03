@@ -890,16 +890,20 @@ def test_interpret_forces_null_bounds():
     sig = ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20))
     assert sig["verdict"] == "significant" and sig["rules_out"] is None
     assert "显著" in sig["text"] and "CI95" in sig["text"]
-    # 小样本 null: n=2 时 p 地板(0.5)就超过 alpha, 故正确诊断是"检验无力"而非"无信息"
-    # —— 第115轮加 p_floor 后本断言从"无信息"改到这里: 新逻辑给出更准的病因。
-    weak = ce.interpret(ce.paired_compare([1.0, 0.0], [1.0, 0.0]))
+    # 小样本 null: 两对都有非零差值时地板是 0.5 > alpha, 故诊断为"检验无力"
+    # —— 第115轮从"无信息"改到这里, 第120轮又补上"必须真有非零差值"这个前提。
+    weak = ce.interpret(ce.paired_compare([1.0, 0.0], [0.0, 1.0]))
     assert weak["verdict"] == "null" and weak["rules_out"] is None
     assert "检验无力" in weak["text"] and weak["p_floor"] == 0.5
+    # 两侧完全相同 = 零有效对: 地板是 1.0, 病因是"没有任何非零差值"而非"样本少"
+    same = ce.interpret(ce.paired_compare([1.0, 0.0], [1.0, 0.0]))
+    assert same["p_floor"] == 1.0 and "非零差值对只有 1 个" in same["text"], same["text"]
     # 真正的"无信息": 连单元都没有(合成报告), 地板无从谈起
     none_units = ce.interpret(ce.paired_compare([1.0], [1.0]), n_units=0)
     assert "无信息" in none_units["text"] and none_units["p_floor"] is None
-    # 大样本 null: 必须给出具体可排除范围
-    tight = ce.interpret(ce.paired_compare([1.0, 0.0] * 8, [1.0, 0.0] * 8), n_units=80)
+    # 大样本 null: 必须给出具体可排除范围。显式 floor_n 表明这批 80 单元全都有效
+    tight = ce.interpret(ce.paired_compare([1.0, 0.0] * 8, [1.0, 0.0] * 8),
+                         n_units=80, floor_n=80)
     assert tight["verdict"] == "null" and tight["rules_out"] == 0.1
     assert "只能排除" in tight["text"] and "10%" in tight["text"]
     assert tight["n_units"] == 80, "n_units 可显式指定(逐轮单元数≠逐题数)"
@@ -977,10 +981,11 @@ def test_interpret_distinguishes_powerless_test_from_null():
     # n=6 同样效应: 地板降到 0.031 < 0.05, 于是判显著
     ok = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6))
     assert ok["verdict"] == "significant"
-    # n=6 但真无差异: 走有界 null 分支(有 rules_out, 不提"检验无力")
-    tie = ce.interpret(ce.paired_compare([1.0, 0.0] * 3, [1.0, 0.0] * 3))
-    assert tie["verdict"] == "null" and "检验无力" not in tie["text"]
-    assert tie["p_floor"] == 2 / 64
+    # n=6 且六对都有非零差值、但方向混杂 -> 走有界 null 分支(有 rules_out, 非"无力")
+    # 注意不能用两侧完全相同的数据: 那是零有效对, 第120轮起会正确判为"检验无力"。
+    tie = ce.interpret(ce.paired_compare([0.6, 0.4] * 3, [0.4, 0.6] * 3))
+    assert tie["verdict"] == "null" and "检验无力" not in tie["text"], tie["text"]
+    assert tie["p_floor"] == 2 / 64 and tie["rules_out"] is not None
     # alpha 更严时同一 n=6 会翻回"检验无力"
     strict = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6), alpha=0.01)
     assert "检验无力" in strict["text"] and "需至少 8 个配对单元" in strict["text"]
@@ -1005,10 +1010,13 @@ def test_p_floor_knife_edges():
     assert ce.interpret(c6, alpha=a * 1.5)["verdict"] == "significant"
     # min_units 与地板一致(严格小于), 它算的是理论下界, 不含重采样抖动
     assert ce.min_units_for_alpha(a) == 7 and ce.min_units_for_alpha(a * 1.01) == 6
-    # n=1 的诊断是"检验无力"(地板 1.0), 不是"无信息" —— 后者专指没有单元
-    one = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), n_units=1)
+    # n_units=1 且显式 floor_n=1: 诊断是"检验无力"(地板 1.0), 不是"无信息"
+    # —— 后者专指没有单元。不给 floor_n 时会用 compare 自报的有效对数(此例 3), 更准。
+    one = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), n_units=1, floor_n=1)
     assert "检验无力" in one["text"] and one["p_floor"] == 1.0
     assert "无信息" not in one["text"]
+    auto = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), n_units=1)
+    assert auto["p_floor"] == ce.p_floor(3), "未给 floor_n 时应采用有效对数"
     # 逐步递增不得跳号: 每个 alpha 的答案都要精确
     assert [ce.min_units_for_alpha(x) for x in (0.5, 0.2, 0.1, 0.05, 0.02, 0.01)] == \
         [3, 4, 5, 6, 7, 8]
@@ -1056,6 +1064,53 @@ def test_min_units_error_reports_actual_floor():
         except ValueError as e:
             assert repr(1 / (rs + 1)) in str(e) or f"{1 / (rs + 1)}" in str(e), \
                 f"resamples={rs}: 报错未含真实地板 {1 / (rs + 1)}: {e}"
+
+
+
+
+def test_paired_compare_reports_effective_pairs():
+    """置换检验的可达最小 p 由非零差值对数决定 —— 符号翻转对零差值对是恒等操作。
+    第120轮实证: 5 对零差 + 1 对满差, p=1.0000 恰是 p_floor(1), 与 p_floor(6) 无关。
+    这与第119轮 McNemar 那处是同一个 bug 类: 接口上传了语义不同的同名量。"""
+    c = ce.paired_compare([1.0] * 6, [1.0] * 5 + [0.0])
+    assert c["n"] == 6 and c["n_effective"] == 1 and c["ties"] == 5
+    assert c["p_value"] == 1.0, "只有一对非零时置换检验必然给 1.0"
+    assert c["p_value"] == ce.p_floor(c["n_effective"]), "实测 p 应恰等于有效对的地板"
+    # 全非零时两个基数相等
+    c2 = ce.paired_compare([0.5] * 6, [0.4] * 6)
+    assert c2["n_effective"] == c2["n"] == 6 and c2["ties"] == 0
+    # 有效对数的定义: 与 wins+losses 恒等(平局即零差)
+    for a, b in (([1.0, 0.0, 1.0], [0.0, 0.0, 1.0]), ([0.3] * 4, [0.3, 0.1, 0.3, 0.9])):
+        c3 = ce.paired_compare(a, b)
+        assert c3["n_effective"] == c3["wins"] + c3["losses"], (a, b, c3)
+        assert c3["n_effective"] + c3["ties"] == c3["n"]
+
+
+def test_interpret_basis_priority_and_wording():
+    """地板基数三选一: 显式 floor_n > compare 的 n_effective > 单元数。
+    三者的补救处方不同, 措辞必须点明是哪一种, 否则读者会加错东西。"""
+    # 1 有零差值对 -> 用有效对数, 措辞"非零差值对"
+    c = ce.paired_compare([1.0] * 18, [1.0] * 15 + [0.6, 0.83, 0.5])
+    v = ce.interpret(c)
+    assert v["verdict"] == "null" and v["p_floor"] == ce.p_floor(3)
+    assert "非零差值对只有 3 个" in v["text"], v["text"]
+    assert "配对单元" not in v["text"] and "不一致对" not in v["text"]
+    # 2 显式 floor_n 优先(report 的 McNemar 路径), 措辞"不一致对"
+    v2 = ce.interpret(c, floor_n=2)
+    assert v2["p_floor"] == ce.p_floor(2) and "不一致对只有 2 个" in v2["text"]
+    # 3 无 n_effective 字段(合成 compare) -> 退回单元数, 措辞"配对单元"
+    synth = {"n": 3, "mean_diff": 0.5, "diff_ci": (0.4, 0.6), "p_value": 0.3}
+    v3 = ce.interpret(synth)
+    assert v3["p_floor"] == ce.p_floor(3) and "配对单元只有 3 个" in v3["text"]
+    # 4 全非零时不该用"非零差值对"措辞(它等于单元数, 说成配对单元才不误导)
+    c4 = ce.paired_compare([0.5, 0.5], [0.4, 0.4])
+    v4 = ce.interpret(c4)
+    assert "配对单元只有 2 个" in v4["text"], v4["text"]
+    # 5 有效对数为 0(两侧完全相同) -> 夹到 1, 地板 1.0, 不得崩
+    c5 = ce.paired_compare([1.0] * 4, [1.0] * 4)
+    v5 = ce.interpret(c5)
+    assert c5["n_effective"] == 0 and v5["p_floor"] == 1.0
+    assert v5["verdict"] == "null" and "检验无力" in v5["text"]
 
 
 if __name__ == "__main__":

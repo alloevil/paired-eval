@@ -33,6 +33,9 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
                     p_win<=2 被 `p_win+p_loss>1` 的检查支配
   蒙特卡洛计数微调  reproduce_findings 的 sims=200->201: 两者都给 required_tasks=81,
                     对输出不可观测(把 sims 钉死等于禁止将来调精度)
+  被前置守卫遮蔽      check_derivation_increment 的 `diff_ci[0] <= 0` 换 `< 0`: 要让
+                    bootstrap 下界恰为 0 需 <=3 个非零差值对(否则全零重采样概率低于
+                    2.5%), 而"检验无力"分支需 >=6 个非零对才放行 -- 相等情形不可达
   被前置条件算术否决  screen_graded 复核判据里的 `s >= hi` 换 `s > hi`: 要产生差异需
                     "全部轮次恰等于 hi 且均分严格小于 hi", 而每轮都等于 hi 则均分必
                     等于 hi -- 算术上不可能, 且"均分在区间内"这一条已先否决

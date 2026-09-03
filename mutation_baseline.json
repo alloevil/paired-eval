@@ -27,6 +27,7 @@
   "paired_bench.py|reliability_matrix#1: Gt->GtE",
   "paired_bench.py|screen_graded#1: GtE->Gt",
   "reproduce_findings.py|check_derivation_increment#0: Lt->LtE",
+  "reproduce_findings.py|check_derivation_increment#0: LtE->Lt",
   "reproduce_findings.py|check_model_null#0: const 200->201"
  ]
 }

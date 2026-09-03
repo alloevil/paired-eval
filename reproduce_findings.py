@@ -203,6 +203,11 @@ def check_derivation_increment(call, judge, n=6, verbose=True):
         warnings.append(f"单元数 {units} < {EXPECTED['derivation_units_min']}(记录值): "
                         f"n={n} 不足以复现该结论, 需 n>="
                         f"{-(-EXPECTED['derivation_units_min'] // len(cases))}")
+    elif verdict["verdict"] != "significant" and verdict["rules_out"] is None:
+        # 检验本身无力(地板 >= alpha, 或 MDE 不可达): 这是功效问题, 不是结论漂移。
+        # 单元数够但非零差值对不够时会走到这里 —— 报"CI 下界<=0"会误导成"效应不存在",
+        # 而真正的处方是换更能拉开差距的题(第120轮修正)。
+        warnings.append(f"检验无力, 不构成复现: {verdict['text']}")
     elif cmp_["diff_ci"][0] <= 0:
         problems.append(f"增量的 CI 下界 {cmp_['diff_ci'][0]:+.3f} <= 0: 在足够样本下"
                         f"仍无法确认增量存在 —— 记录值是 CI95=[+0.086,+0.285]")

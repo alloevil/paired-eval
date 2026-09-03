@@ -261,10 +261,27 @@ def test_derivation_check_five_criteria():
         # 1 增量正常: 完整复现
         rf._grade_derivation = _fixed_grader(0.79, 0.92)
         assert rf.check_derivation_increment(None, None, n=6, verbose=False) == ([], [])
-        # 2 增量消失: CI 下界触 0 -> 失败, 且要点出记录值供对照
+        # 2a 两侧完全相同(零非零差值对): 第120轮修正后归为功效问题而非漂移 ——
+        # 检验没有任何区分材料, 说"在足够样本下仍无法确认"是错的(样本并不足够)。
         rf._grade_derivation = _fixed_grader(0.79, 0.79)
         p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
-        assert len(p) == 1 and "CI 下界" in p[0] and "+0.086" in p[0], p
+        assert p == [] and len(w) == 1, (p, w)
+        assert "检验无力" in w[0] and "非零差值对" in w[0], w
+        # 2b 真正的"增量已衰减": 每对都有非零差值, 但幅度小于阈值 -> 才算漂移
+        alt = [0.79 + 0.02, 0.79 + 0.01]
+        seq = {"i": 0}
+
+        def small_gain(case, call, judge, use_check):
+            if not use_check:
+                return 0.79
+            v = alt[seq["i"] % len(alt)]
+            seq["i"] += 1
+            return v
+
+        rf._grade_derivation = small_gain
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and w == [], (p, w)
+        assert "已衰减" in p[0] and "+0.183" in p[0], p
         # 3 方向反转: 单独报出, 且明示不要当失败处理
         rf._grade_derivation = _fixed_grader(0.90, 0.50)
         p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
@@ -366,6 +383,38 @@ def test_ceiling_threshold_exact_equality():
     finally:
         rf._grade_derivation = real_g
         rf.EXPECTED["derivation_ceiling_max"] = real_c
+
+
+
+
+def test_derivation_ci_straddling_zero_fails():
+    """CI 下界为负 = 证据没排除"增量为零", 必须判失败(而非警告): 此时非零差值对
+    充足, 检验有力, 只是结论不成立 —— 这正是"漂移"与"功效不足"的分界线。
+
+    附一条结构性观察(第120轮): 下界"恰好等于 0"在本函数里不可达 —— 要让 bootstrap
+    下界落在 0, 需 <=3 个非零差值对(否则全零重采样的概率低于 2.5%), 而那时"检验无力"
+    分支(需 >=6 个非零对才放行)已先拦下。故 `<= 0` 与 `< 0` 在此结构下同结果。"""
+    real = rf._grade_derivation
+    try:
+        # 多数对小幅正、少数对大幅负 -> 均值正但 CI 跨 0; 18 对全非零, 检验有力
+        seq = [0.10, 0.10, 0.10, 0.10, -0.30, 0.10]
+        st = {"i": 0}
+
+        def mixed(case, call, judge, use_check):
+            if not use_check:
+                return 0.5
+            v = 0.5 + seq[st["i"] % len(seq)]
+            st["i"] += 1
+            return v
+
+        rf._grade_derivation = mixed
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert w == [], f"18 对全非零, 不该报功效问题: {w}"
+        assert len(p) == 1 and "CI 下界" in p[0], p
+        assert "+0.086" in p[0], "须点出记录值供对照"
+        assert "-" in p[0].split("CI 下界")[1][:8], f"下界应为负: {p[0]}"
+    finally:
+        rf._grade_derivation = real
 
 
 if __name__ == "__main__":

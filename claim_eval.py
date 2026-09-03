@@ -382,7 +382,7 @@ def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):
 
 
 def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, seed=0,
-                   detail=False):
+                   detail=False, rand=None):
     """功效分析: 估算配对 A/B 需要多少任务才能以 power 的概率检出差异。
     p_win / p_loss = 每个任务上 A 胜 / 负于 B 的概率(其余平局), 要求 p_win > p_loss。
     内部用 mcnemar_exact 判定 —— 规划器与检验器必须用同一把尺子: 早先这里用符号检验的
@@ -394,14 +394,17 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
     paired_compare/mcnemar 不显著时, 用它回答"还要加多少任务", 而不是反复重跑碰运气。"""
     if not 0 <= p_loss < p_win <= 1 or p_win + p_loss > 1:
         raise ValueError("需要 0 <= p_loss < p_win 且 p_win + p_loss <= 1")
-    rng = random.Random(seed)
+    rand = rand or random.Random(seed).random   # 唯一未注入的依赖曾是 RNG:
+    # 蒙特卡洛函数的契约是统计性的, 小扰动被随机性吸收 —— 变异测试里这两个规划器的
+    # 存活率远高于其他代码。注入确定性 rand 后, 边界(达标比较、搜索上界、计数器初值)
+    # 才能被精确断言, 而不是靠"统计上大概对"。
 
     def power_at(n):
         hits = 0
         for _ in range(sims):
             a_only = b_only = 0
             for _ in range(n):
-                r = rng.random()
+                r = rand()
                 if r < p_win:
                     a_only += 1
                 elif r < p_win + p_loss:
@@ -422,7 +425,7 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
 
 
 def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, step=0.01,
-                      detail=False):
+                      detail=False, rand=None):
     """required_tasks 的反问题: 任务集固定为 n 时, 最小可检出的胜率是多少(MDE)。
     实践中任务集通常是给定的 —— 此时诚实报告需要的不是"再加多少题", 而是
     "这个任务集根本看不见小于多大的差异"。同样用 mcnemar_exact 判定, 与检验器一致。
@@ -433,14 +436,14 @@ def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, st
         raise ValueError("n >= 1")
     if not 0 <= p_loss < 1:
         raise ValueError("需要 0 <= p_loss < 1")
-    rng = random.Random(seed)
+    rand = rand or random.Random(seed).random
     p_win = max(p_loss + step, step)
     while p_win + p_loss <= 1.0:
         hits = 0
         for _ in range(sims):
             a_only = b_only = 0
             for _ in range(n):
-                r = rng.random()
+                r = rand()
                 if r < p_win:
                     a_only += 1
                 elif r < p_win + p_loss:

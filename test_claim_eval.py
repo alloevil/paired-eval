@@ -747,6 +747,33 @@ def test_derived_zero_guard():
     assert ce.verify_derived("双零", obs, mk("0", 0), rel_tol=0.02)["verdict"] == "derived-ok"
 
 
+
+
+def test_planners_with_injected_rand():
+    """注入确定性 rand 后, 规划器的边界可以被精确断言 ——
+    蒙特卡洛函数的契约是统计性的, 随机性会吸收小扰动(变异测试中这两个函数
+    存活率远高于其他代码), 注入是把它们变成可精确验证的唯一办法。"""
+    # 恒 0: 每次抽样都 < p_win -> a_only=n, b_only=0 -> 强不一致 -> 功效=1
+    always_win = lambda: 0.0
+    d = ce.required_tasks(0.5, 0.1, sims=5, detail=True, rand=always_win)
+    assert d["n"] == 8 and d["achieved_power"] == 1.0, \
+        f"确定性全胜下最小网格点即达标: {d}"
+    # 恒 1: 永不落入 p_win/p_loss 区间 -> 无不一致对 -> mcnemar p=1 -> 功效=0 -> 不可达
+    never = lambda: 1.0
+    assert ce.required_tasks(0.5, 0.1, sims=5, n_max=64, rand=never) is None
+    assert ce.detectable_effect(20, sims=5, rand=never) is None
+    # 恒 0 时 MDE 必须是第一个网格点(step), 因为它已达标
+    mde = ce.detectable_effect(20, sims=5, step=0.05, rand=always_win)
+    assert mde == 0.05, f"首个网格点即达标: {mde}"
+    # achieved >= power 的相等边界: n=8 时每轮抽 8 次, sims=5 -> 共 40 次。
+    # 前 4 轮(32次)全胜、第 5 轮(8次)全不胜 -> 功效恰为 4/5 = 0.8 = 默认 power。
+    seq = iter([0.0] * 32 + [1.0] * 8)
+    d2 = ce.required_tasks(0.5, 0.1, sims=5, n_max=8, detail=True,
+                           rand=lambda: next(seq))
+    assert d2["achieved_power"] == 0.8 and d2["n"] == 8, \
+        f"功效恰好等于目标时必须判达标: {d2}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

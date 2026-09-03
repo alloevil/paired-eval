@@ -207,6 +207,39 @@ def test_summarize_window_guard():
 
 
 
+def test_evaluate_pair_cancels_judge_order_bias():
+    """交错判定: judge 的"先看到谁就给谁高分"这类顺序偏置必须两侧对消;
+    真实质量差仍照常检出。"""
+    import rubric_eval as re_
+    seen = {"i": 0}
+
+    def order_biased_judge(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        seen["i"] += 1
+        return {"verdict": "met" if seen["i"] % 2 == 1 else "not_met", "reasoning": "r"}
+
+    t = {"id": "t-pair", "verification": {"class": "rubric",
+         "criteria": [{"text": "条A", "weight": 1}]}}
+    out = et.evaluate_pair(t, "回答A", "回答B", n=4, llm=order_biased_judge)
+    assert [r["a_first"] for r in out["rows"]] == [True, False, True, False]
+    assert out["a_mean"] == out["b_mean"] == 0.5, f"顺序偏置应对消: {out['a_mean']},{out['b_mean']}"
+    assert out["compare"]["mean_diff"] == 0.0
+    # 真实差异: judge 只认含关键词的回答
+    kw_judge = lambda p, s, sch: {"verdict": "met" if "关键词" in p else "not_met", "reasoning": "r"}
+    out2 = et.evaluate_pair(t, "含关键词的回答", "普通回答", n=2, llm=kw_judge)
+    assert out2["a_mean"] == 1.0 and out2["b_mean"] == 0.0
+    assert out2["compare"]["wins"] == 2
+    # exact 类无需重复也可用; n<1 拒绝
+    out3 = et.evaluate_pair(T_EXACT, "答案: 8635亿", "答案: 1亿")
+    assert out3["a_mean"] == 1.0 and out3["b_mean"] == 0.0
+    try:
+        et.evaluate_pair(T_EXACT, "答案: 1", "答案: 2", n=0)
+        assert False, "n<1 应拒绝"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

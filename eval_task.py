@@ -176,3 +176,39 @@ def repeat_evaluate(task, n=8, response=None, observations=None, **deps):
     if scores and all(s in (0.0, 1.0) for s in scores):
         out["successes"] = int(sum(scores))
     return out
+
+
+def evaluate_pair(task, response_a, response_b, n=1, observations_a=None,
+                  observations_b=None, **deps):
+    """同一 task 下交错评判两个系统的回答: 每轮 A/B 紧邻判定, 且逐轮交换先后。
+    judge 同样会跨窗漂移, 先判后判也可能不对称 —— "先把A全判完再判B"会把这两者
+    混进系统差异(与 paired_bench.run_paired_repeated 同源, 那边有实测教训)。
+    n>1 仅对 judge 类路由有意义(exact 类确定性)。
+    返回 {"task_id","n","rows":[{rep,a,b,a_first}],"a_mean","b_mean","compare"}。"""
+    if n < 1:
+        raise ValueError("n >= 1")
+    rows = []
+    for rep in range(n):
+        a_first = rep % 2 == 0
+
+        def side_a():
+            return evaluate(task, response=response_a, observations=observations_a, **deps)
+
+        def side_b():
+            return evaluate(task, response=response_b, observations=observations_b, **deps)
+
+        if a_first:
+            ra = side_a()
+            rb = side_b()
+        else:
+            rb = side_b()
+            ra = side_a()
+        rows.append({"rep": rep, "a": ra["score"], "b": rb["score"],
+                     "a_first": a_first, "result_a": ra, "result_b": rb})
+    sa = [r["a"] for r in rows if r["a"] is not None and r["b"] is not None]
+    sb = [r["b"] for r in rows if r["a"] is not None and r["b"] is not None]
+    if not sa:
+        raise ValueError("两侧均无有效分数(全部为 None),无可比数据")
+    return {"task_id": task["id"], "n": n, "rows": rows,
+            "a_mean": sum(sa) / len(sa), "b_mean": sum(sb) / len(sb),
+            "compare": ce.paired_compare(sa, sb)}

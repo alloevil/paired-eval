@@ -19,6 +19,15 @@
               parse_number 的单位窗口 3->4(单位最长2字符)、哨兵位置 -1->-2
               (content 为 None 时该值从不被使用)、日志截断 80->81。
 等价变异应记录并解释, 而不是为它编造测试 —— 那种测试只是把实现细节钉死。
+
+claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等价变异, 分五类:
+  截断/上限常量      EVIDENCE_CAP 6000, round(·,10) 的 10  —— 只影响长度/精度余量
+  被后续条件掩盖    range(max_retries+1) 的上界被 `attempt == max_retries` 的 break 支配
+  死初始化          adjusted = [0.0]*n 每个位置随后都被覆盖
+  零守卫的等价分支  `n = len(results) or 1` 里 1 换成 2: 分子为 0, 商仍为 0
+  实践中不可达      p 值恰好等于 alpha、浮点恰好等于 mean_diff-1e-12、
+                    p_win<=2 被 `p_win+p_loss>1` 的检查支配
+这类结论应记录而非补测: 为它们写的测试只会把实现细节钉死, 让合理重构无谓失败。
 """
 import ast
 import pathlib

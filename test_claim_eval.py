@@ -774,6 +774,74 @@ def test_planners_with_injected_rand():
         f"功效恰好等于目标时必须判达标: {d2}"
 
 
+
+
+def test_planner_grid_progression():
+    """网格递进公式 max(n+4, int(n*1.4)) 必须被钉住: 起点8、增长率、下限步长
+    三个常量此前都被随机性吸收。用抽样次数反推试过的 n 序列(每轮 n 次抽样)。"""
+    calls = []
+
+    def never_win():
+        calls.append(1)
+        return 1.0                      # 恒不落入胜/负区间 -> 无不一致对 -> 功效0
+
+    assert ce.required_tasks(0.5, 0.1, sims=1, n_max=64, rand=never_win) is None
+    expected = [8, 12, 16, 22, 30, 42, 58]      # 8 -> max(12, 11) -> max(16,16) -> ...
+    assert len(calls) == sum(expected), \
+        f"抽样总数应为 {sum(expected)}(即试过 {expected}), 实得 {len(calls)}"
+
+
+def test_mde_search_upper_bound_inclusive():
+    """搜索上界是闭区间: p_win + p_loss 恰好等于 1.0 时仍须尝试。
+    构造: step=0.5 时网格为 0.5 -> 1.0, 恒 0.5 的 rand 使 0.5 全平局、1.0 全胜。
+    上界改成开区间后 1.0 不会被尝试, 结果由 1.0 变成 None。"""
+    mde = ce.detectable_effect(20, p_loss=0.0, step=0.5, sims=3, rand=lambda: 0.5)
+    assert mde == 1.0, f"p_win=1.0 必须被尝试并达标: {mde!r}"
+
+
+def test_mde_counter_init_exact():
+    """模拟计数器必须从 0 起: n=6 全胜时不一致对为 (6,0), p=0.031 显著;
+    初值若为 1 则是 (7,1), p=0.070 不显著 -> MDE 由 0.1 变成 None。
+    这是把"统计上大概对"变成精确断言的例子。"""
+    assert abs(ce.mcnemar_exact(6, 0) - 0.03125) < 1e-9
+    assert abs(ce.mcnemar_exact(7, 1) - 0.0703125) < 1e-9
+    mde = ce.detectable_effect(6, step=0.1, sims=3, rand=lambda: 0.0)
+    assert mde == 0.1, f"(6,0) 显著 -> 首个网格点即达标: {mde!r}"
+
+
+
+
+def test_planner_validation_boundaries():
+    """参数校验的每个边界都要钉住(此前只测过 p_loss>p_win 一种):
+    相等、超上界、和超过1 都必须拒绝; 和恰好等于1 必须放行。"""
+    for p_w, p_l in [(0.5, 0.5), (0.4, 0.5), (1.5, 0.1), (0.6, 0.5), (-0.1, 0.0)]:
+        try:
+            ce.required_tasks(p_w, p_l, sims=2, n_max=8)
+            assert False, f"非法参数应拒绝: p_win={p_w}, p_loss={p_l}"
+        except ValueError:
+            pass
+    # p_win + p_loss 恰好等于 1: 合法(闭区间), 恒胜时最小网格点即达标
+    assert ce.required_tasks(0.6, 0.4, sims=2, n_max=8, rand=lambda: 0.0) == 8
+    # MDE 侧的校验边界
+    for n, p_l in [(0, 0.0), (1, 1.0), (1, -0.1)]:
+        try:
+            ce.detectable_effect(n, p_loss=p_l, sims=2)
+            assert False, f"非法参数应拒绝: n={n}, p_loss={p_l}"
+        except ValueError:
+            pass
+
+
+def test_simulation_comparison_boundaries():
+    """模拟内部两处比较都是开区间: 抽样值恰好等于 p_win(或 p_win+p_loss)时算平局,
+    不算胜(负)。改成闭区间后, 恒定抽样会从"全平局"翻转成"全胜(全负)", 结论完全不同。"""
+    # r 恰等于 p_win: 原版全平局 -> 无不一致对 -> 不可达
+    assert ce.required_tasks(0.5, 0.0, sims=3, n_max=16, rand=lambda: 0.5) is None
+    # r 恰等于 p_win+p_loss: 同样全平局(改成 <= 会变成全负 -> 显著)
+    assert ce.required_tasks(0.3, 0.2, sims=3, n_max=16, rand=lambda: 0.5) is None
+    # 略小于 p_win 才算胜: 确认构造本身有区分力
+    assert ce.required_tasks(0.5, 0.0, sims=3, n_max=16, rand=lambda: 0.49) == 8
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -182,6 +182,31 @@ def test_repeat_evaluate():
         pass
 
 
+def test_summarize_window_guard():
+    """与 reliability_matrix 同源: 不同测量窗的结果不许并排汇总。"""
+    rows = [et.evaluate(T_EXACT, response="答案: 8635亿"),
+            et.evaluate(T_EXACT, response="答案: 1亿")]
+    assert all(isinstance(r["measured_at"], float) for r in rows), "每行必须带测量时戳"
+    assert et.summarize(rows)["n"] == 2, "同窗正常汇总"
+    stale = dict(rows[0], measured_at=rows[0]["measured_at"] - 7200)
+    try:
+        et.summarize(rows + [stale])
+        assert False, "跨2小时应报错"
+    except ValueError as e:
+        assert "漂移" in str(e)
+    assert et.summarize(rows + [stale], max_span_s=None)["n"] == 3, "可显式关闭"
+    # 无时戳的合成行不受影响(向后兼容),但混指纹仍拒绝
+    synth = {"verification_class": "exact", "score": 1.0,
+             "verifier_fp": rows[0]["verifier_fp"]}
+    assert et.summarize([synth])["n"] == 1
+    try:
+        et.summarize([synth, dict(synth, verifier_fp="deadbeef")])
+        assert False, "混指纹仍须拒绝"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

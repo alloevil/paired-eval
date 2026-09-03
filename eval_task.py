@@ -24,6 +24,7 @@ execution / deferred / preference / policy 不在本模块职责内 —— 它�
 """
 
 import hashlib
+import time
 
 import answer_match as am
 import claim_eval as ce
@@ -67,7 +68,7 @@ def evaluate(task, response=None, observations=None,
     v = validate_task(task)
     cls = v["class"]
     base = {"task_id": task["id"], "verification_class": cls,
-            "verifier_fp": verifier_fingerprint()}
+            "verifier_fp": verifier_fingerprint(), "measured_at": time.time()}
     if meter is not None:
         before = meter.snapshot()
         llm = meter.wrap_llm(llm) if llm is not None else None
@@ -125,15 +126,24 @@ def evaluate_batch(items, **deps):
                      observations=it.get("observations"), **deps) for it in items]
 
 
-def summarize(rows, strict_fp=True):
+def summarize(rows, strict_fp=True, max_span_s=3600):
     """批量结果汇总: 按 verification_class 分组的 n / 均分 / 成本合计。
-    指纹一致性是硬性检查: rows 混有不同 verifier_fp 时默认报错 —— 不同指纹 = 不同尺子,
-    分数混合汇总无意义;要么分开汇总,要么统一验证器版本重跑。strict_fp=False 仅降级为标注。"""
+    两道混尺检查(同源,都是"不同尺子的分数不许并排"):
+    - 指纹: rows 混有不同 verifier_fp 时报错(strict_fp=False 降级为标注全部指纹)。
+    - 测量窗口: measured_at 齐备时校验跨度 <= max_span_s(默认1小时)。judge 与被评系统的
+      表现都会跨会话漂移(本仓库实测同一模型同题两窗得 0/8 与 8/8), 跨窗汇总会把漂移
+      读成系统差异。max_span_s=None 关闭。"""
     if not rows:
         raise ValueError("rows 不能为空")
     fps = sorted({r["verifier_fp"] for r in rows})
     if len(fps) > 1 and strict_fp:
         raise ValueError(f"混合验证器指纹 {fps}: 跨指纹分数不可比,分开汇总或重跑")
+    stamps = [r["measured_at"] for r in rows if "measured_at" in r]
+    if max_span_s is not None and len(stamps) == len(rows) and stamps:
+        span = max(stamps) - min(stamps)
+        if span > max_span_s:
+            raise ValueError(f"测量窗口跨度 {span:.0f}s 超过 {max_span_s}s: "
+                             "表现会跨会话漂移,请重测或显式设 max_span_s=None")
     by_class = {}
     for r in rows:
         g = by_class.setdefault(r["verification_class"],

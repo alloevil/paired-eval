@@ -32,11 +32,30 @@ CMP_FLIP = {ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE, ast.GtE: ast.Gt,
             ast.Eq: ast.NotEq, ast.NotEq: ast.Eq}
 
 
+def _noise_constants(tree):
+    """已知等价类的常量节点 id: 变异它们只会产出无法区分的变异体, 纯噪声。
+    - 函数默认参数值(sims/seed/max_workers/n/confirm_n/窗口秒数...): 是约定不是契约,
+      测试若把它们钉死, 将来调参就会无谓失败。
+    - 切片截断长度(日志/留痕的 [:80]、[:120]): 只影响消息长短。
+    实测: 前两轮扫描的存活变异里, 这两类占了 10/11。"""
+    skip = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for d in list(node.args.defaults) + [d for d in node.args.kw_defaults if d]:
+                for sub in ast.walk(d):
+                    skip.add(id(sub))
+        elif isinstance(node, ast.Subscript):
+            for sub in ast.walk(node.slice):
+                skip.add(id(sub))
+    return skip
+
+
 class _Mutator(ast.NodeTransformer):
     """把第 target 个可变异点改掉; 其余原样。"""
 
-    def __init__(self, target):
+    def __init__(self, target, skip_ids=frozenset()):
         self.target = target
+        self.skip_ids = skip_ids
         self.seen = 0
         self.applied = None
 
@@ -72,14 +91,16 @@ class _Mutator(ast.NodeTransformer):
     def visit_Constant(self, node):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             return node
+        if id(node) in self.skip_ids:
+            return node
         if self._hit(f"const {node.value!r}->{node.value + 1!r}", node.lineno):
             return ast.Constant(value=node.value + 1)
         return node
 
 
-def count_points(tree):
-    m = _Mutator(-1)
-    m.visit(ast.parse(ast.unparse(tree)))
+def count_points(tree, skip_ids=frozenset()):
+    m = _Mutator(-1, skip_ids)
+    m.visit(tree)
     return m.seen
 
 
@@ -101,14 +122,17 @@ def run(modules, limit=None, seed=0):
         if not baseline_ok:
             print(f"!! {mod}: unparse 空变异即失败, 该模块的变异结果不可信(跳过)")
             continue
-        total = count_points(tree)
+        tree_c = ast.parse(original)          # skip_ids 依赖节点对象同一性: 必须同一棵树
+        total = count_points(tree_c, _noise_constants(tree_c))
         idxs = list(range(total))
         if limit and limit < total:
             idxs = sorted(random.Random(seed).sample(idxs, limit))
-        print(f"== {mod}: {total} 个可变异点, 本次跑 {len(idxs)} 个 (unparse 对照通过)")
+        print(f"== {mod}: {total} 个可变异点(已滤除默认参数/切片长度等已知等价类), "
+              f"本次跑 {len(idxs)} 个 (unparse 对照通过)")
         for i in idxs:
-            mut = _Mutator(i)
-            new_tree = mut.visit(ast.parse(original))
+            tree_i = ast.parse(original)
+            mut = _Mutator(i, _noise_constants(tree_i))
+            new_tree = mut.visit(tree_i)
             if mut.applied is None:
                 continue
             try:

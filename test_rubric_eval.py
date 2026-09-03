@@ -128,6 +128,25 @@ def test_canary_with_unjudgeable_fooling():
     assert c2["separation"] == 0.0 and c2["passed"] is False
 
 
+
+
+def test_canary_margin_boundary():
+    """分离度恰好等于门槛时必须放行(>= 语义): 全量变异扫描把 >= 改成 > 后存活,
+    因为此前用例的分离度都是 1.0 或 0.0, 从不落在门槛上。"""
+    def half_met(prompt, system, schema):
+        # 好回答命中权重2中的1 -> 0.5; 糊弄回答全不中 -> 0.0; 分离度恰为 0.5
+        if "好回答" in prompt:
+            return {"verdict": "met" if "条A" in prompt else "not_met", "reasoning": "r"}
+        return {"verdict": "not_met", "reasoning": "r"}
+
+    crit = [{"text": "条A", "weight": 1}, {"text": "条B", "weight": 1}]
+    c = re_.rubric_canary(crit, "好回答", "糊弄", half_met, margin=0.5)
+    assert c["separation"] == 0.5
+    assert c["passed"] is True, "分离度恰好等于 margin 应放行"
+    c2 = re_.rubric_canary(crit, "好回答", "糊弄", half_met, margin=0.51)
+    assert c2["passed"] is False, "略高于分离度的门槛应拦下"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

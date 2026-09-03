@@ -109,6 +109,29 @@ def test_tolerance_inclusive_boundary():
     assert not am.match_numeric("5", "7.001", rel_tol=0.0, abs_tol=2.0)
 
 
+
+
+def test_wan_unit_and_empty_set_fallbacks():
+    """全量变异扫描暴露的两处: 单位"万"(此前只测过"万亿"与"亿");
+    match_set 空输入时 precision/recall 的回退值(此前只断言了 f1, 恰好被0吸收)。"""
+    assert am.parse_number("3万") == 30000.0
+    assert am.parse_number("2.5万") == 25000.0
+    assert am.parse_number("1.5万亿") == 1.5e12, "万亿必须优先于万"
+    assert am.match_numeric("3万", "30000")
+    r = am.match_set([], ["a"])
+    assert r["precision"] == 0.0 and r["recall"] == 0.0 and r["f1"] == 0.0
+    r2 = am.match_set(["a"], [])
+    assert r2["precision"] == 0.0 and r2["recall"] == 0.0
+
+
+def test_boxed_at_position_zero():
+    """\\boxed 出现在字符串开头(rfind 返回 0)必须被识别 ——
+    i<0 改成 i<=0 后存活: 此前所有用例的 boxed 都有前缀。"""
+    assert am.extract_answer(r"\boxed{42}") == "42"
+    assert am.extract_answer(r"\boxed{\frac{1}{2}}") == r"\frac{1}{2}"
+    assert am.grade_answer(r"\boxed{42}", "42", kind="numeric")["verdict"] == "correct"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -158,6 +158,92 @@ def test_task_floor_accepts_exactly_three():
         pb.SCAFFOLD_SENSITIVE = real_ids
 
 
+
+
+def test_null_check_separates_drift_from_weak_power():
+    """null 复现的核心分界: "差异出现了"是失败, "样本不够"只是警告 —— 不能混。
+    第107轮我把 16 单元(MDE 0.46)的 null 当成"效应不存在", 脚本不许重犯。"""
+    good = lambda p: _canon_for(p)
+    # 两模型真等价: null 成立, 但 16 单元只能排除 >=46% -> WARN 而非静默 PASS
+    problems, warnings = rf.check_model_null(good, good, n=4, verbose=False)
+    assert problems == [], "两侧等价不该报失败"
+    assert len(warnings) == 1 and "界更松" in warnings[0]
+    assert "46%" in warnings[0] and "81 个单元" in warnings[0], \
+        "警告必须给出这次的界与补齐所需样本量, 否则读者无法判断可信度"
+    # 一侧明显更差: null 失效 -> FAIL, 且不许同时报 WARN(原因要单一明确)
+    problems, warnings = rf.check_model_null(good, lambda p: "错", n=4, verbose=False)
+    assert len(problems) == 1 and "null 已失效" in problems[0]
+    assert warnings == [], "已判失效就不该再报界的警告"
+    assert "不要直接改记录" in problems[0]
+    # 样本降到无信息: 必须说"不能算复现", 而不是通过
+    problems, warnings = rf.check_model_null(good, good, n=1, verbose=False)
+    assert problems == [] and len(warnings) == 1
+    assert "无信息" in warnings[0] and "不能算复现" in warnings[0]
+
+
+def test_main_exit_codes_and_null_wiring():
+    """warnings 不改变退出码(界松不是失败), problems 才改。null 检查仅在给出
+    第二个模型时才跑 —— 否则单模型用户会看到一个凭空的 null 结论。"""
+    good = lambda p: _canon_for(p)
+    assert rf.main(strict_only) == 0                      # 只跑正向发现
+    assert rf.main(strict_only, call_b=good, n=4) == 0    # 加 null: WARN 但仍 0
+    assert rf.main(strict_only, call_b=lambda p: "错", n=4) == 1, \
+        "null 失效必须让退出码非零"
+    # 正向发现失败时也要非零, 且与 null 无关
+    assert rf.main(good) == 1
+
+
+
+
+def test_pass_line_names_which_checks_reproduced():
+    """PASS 文案必须点名复现了哪几项 —— 一句光秃秃的"复现成功"无法区分
+    "两项都过"与"只跑了一项", 而后者常因忘传第二个模型发生。"""
+    import contextlib
+    import io
+
+    good = lambda p: _canon_for(p)
+
+    def run(*a, **kw):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = rf.main(*a, **kw)
+        return rc, buf.getvalue()
+
+    rc, out = run(strict_only)
+    assert rc == 0 and "PASS  脚手架效应 复现成功" in out, out[-200:]
+    assert "模型 null" not in out, "未传第二个模型时不该出现 null 结论"
+
+    rc, out = run(strict_only, call_b=good, n=4)
+    pass_line = [l for l in out.splitlines() if l.startswith("PASS")][0]
+    assert "脚手架效应" in pass_line and "模型 null" in pass_line, pass_line
+    assert "界更松" in pass_line, "界松这件事必须出现在 PASS 行本身, 不能只在 WARN 里"
+    assert "不构成完整复现" in out
+
+    # null 失效时 PASS 行不得出现
+    rc, out = run(strict_only, call_b=lambda p: "错", n=4)
+    assert rc == 1 and "PASS" not in out and "FAIL" in out
+
+
+def test_null_bound_equal_to_record_is_full_reproduction():
+    """界恰好等于记录值(0.10)时算完整复现, 不该报"更松" —— 边界要包含。"""
+    real = rf.pb.report
+    try:
+        for bound, want_warn in ((0.10, False), (0.10 + 1e-9, True)):
+            rf.pb.report = lambda *a, _b=bound, **k: {
+                "pairs": [{"a": "a", "b": "b", "mean_diff": 0.0,
+                           "p_mcnemar_holm": 1.0, "concentration": None,
+                           "diff_ci": (0.0, 0.0),
+                           "interpretation": {"verdict": "null", "rules_out": _b,
+                                              "n_units": 80, "text": "(合成)"}}],
+                "saturation": {"informative": 4, "n_tasks": 4}, "text": "(合成)"}
+            _, warnings = rf.check_model_null(lambda p: "x", lambda p: "x",
+                                              n=1, verbose=False)
+            assert bool(warnings) == want_warn, \
+                f"界={bound} 期望警告={want_warn}, 实得 {warnings}"
+    finally:
+        rf.pb.report = real
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

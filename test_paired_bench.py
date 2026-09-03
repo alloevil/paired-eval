@@ -766,6 +766,28 @@ def test_make_model_exhausts_retries():
     assert naps == [2.0, 4.0], f"3次尝试只该睡2次(线性退避): {naps}"
 
 
+
+
+def test_scaffold_sensitive_subset():
+    """harness 评测子集的完整性: id 必须真实存在, 且其判定器确实对输出污染敏感
+    (脚手架差异的典型形态是模型加了 markdown 围栏/解释文字, 内容对但格式坏)。"""
+    ids = {t["id"] for t in pb.ALL_TASKS}
+    assert pb.SCAFFOLD_SENSITIVE, "子集不得为空"
+    for tid in pb.SCAFFOLD_SENSITIVE:
+        assert tid in ids, f"{tid} 不在 ALL_TASKS 中(改名后忘了同步?)"
+    t = next(x for x in pb.ALL_TASKS if x["id"] == "if-json")
+    assert t["check"](t["canonical"]), "canonical 必须通过"
+    # 实测中裸指令的真实失败形态: 正确 JSON 被 markdown 围栏包裹
+    fenced = '```json\n{"a": 1, "b": 2}\n```'
+    try:
+        ok = bool(t["check"](fenced))
+    except Exception:
+        ok = False
+    assert not ok, "带围栏的正确JSON必须判错 —— 这正是该题能测出脚手架差异的原因"
+    # 前后空白不该导致失败(判定器 strip 后比较), 否则敏感度来源就不纯
+    assert t["check"]('  {"a": 1, "b": 2}  '), "两端空白应被容忍"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

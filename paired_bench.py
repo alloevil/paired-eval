@@ -27,6 +27,16 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
     trajectory  must_ground 0.67 vs allow_parametric 1.00(parametric=1), 加权>未加权
                 说明那条无据补充是 detail 而非 core —— 重大幻觉不被无害细节稀释
     bench       orders 逐轮交替, refusals/attempts 齐备; RUBRIC_GATE 分离度 1.00
+harness 评测(固定模型比脚手架)与模型评测需要不同的题: 后者要能力梯度, 前者要
+对输出格式敏感的题。实测(default 固定, 严格脚手架 vs 裸指令, 交错重复):
+    if-json    strict 6/6(pass^3=1.00) vs bare 2/6(pass^3=0.00), 复核一致
+               机理: 裸指令下模型输出 markdown 围栏 ```json ... ```,
+               JSON 本身正确但 json.loads 失败 —— 脚手架缺失导致的输出污染,
+               不是能力问题。这是 harness 差异最典型的形态。
+    if-3lines  10/10 vs 8/10 首轮有差, 复核 6/6 vs 6/6 无差 -> 弱信号, 不足为据
+    其余6题     两侧恒过, 零区分力 —— saturation() 报 2/8 有信息, 加题无用
+结论只在它成立的范围内: "严格脚手架对结构化输出是必需的", 而非"脚手架普遍更好"
+(集中度 0.82-1.00 表明差异几乎全来自单题)。SCAFFOLD_SENSITIVE 见文件末尾。
 功效上限(诚实披露): ALL_TASKS 只有 28 题, claim_eval.detectable_effect(28)≈0.27 ——
 即"较优系统需在 ≥27% 的题上单方面胜出且几乎无反向失误"才可能显著。这是冒烟集,
 不是能定论的评测集; 要检出 10% 量级的差异需上百道配对任务(见 required_tasks)。
@@ -548,3 +558,14 @@ RUBRIC_GATE = {
     "fooling": "本回答对腾讯的研发投入情况进行了全面深入且详实的分析,视角专业,"
                "结论可靠,极具参考价值。",
 }
+
+
+# ---------------------------------------------------------------- harness 评测子集
+
+# 经实测确认对脚手架敏感的题(供固定模型比脚手架时选用)。
+# 依据: default 固定, 严格脚手架 vs 裸指令, 交错重复 n=10 与 n=6 两轮 ——
+#   if-json  strict 6/6 vs bare 2/6, pass^3 1.00 vs 0.00, 两轮一致(裸指令输出 markdown 围栏)
+#   if-3lines 首轮 10/10 vs 8/10, 复核 6/6 vs 6/6 -> 弱信号, 故不列入
+# 其余 IF 题两侧恒过(saturation 报 2/8 有信息), 放进 harness A/B 只是烧钱。
+# 新增条目前请照同样流程实测+复核: 猜测哪些题"应该"敏感, 实测会打脸(本例 7/8 猜错)。
+SCAFFOLD_SENSITIVE = ["if-json"]

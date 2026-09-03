@@ -251,16 +251,23 @@ def _survivors(results):
     return sorted(f"{mod}|{desc}" for mod, desc, killed in results if not killed)
 
 
-def check_against_baseline(results, write=False):
+def check_against_baseline(results, write=False, partial=False):
     """棘轮: 新增存活变异即失败。杀伤率是一次性成就, 除非把它钉成基线 ——
     否则新增无测试保护的代码会让存活数静默上涨, 而 pre-commit 只看"测试通过"。
     基线里记的是已分析确认的等价变异清单(见本文件顶部的五类分类)。
-    比对范围限定在本次实际跑过的模块: 拿部分结果与全库基线比, 未跑的模块会被
-    误报成"已修补"(实测踩过)。--baseline 写入时同理只更新跑过的模块。"""
+    两层作用域约束(都是实测踩过的坑):
+    - 比对限定在本次跑过的模块: 拿部分结果与全库基线比, 未跑模块会被误报"已修补"。
+    - partial(--since 只扫改动行)时: 同一模块未被扫到的已知条目同样会显示"已修补",
+      按提示更新基线就会永久抹掉它们。故 partial 下只报新增、不报"已修补",
+      且禁止写基线 —— 基线只能由全量扫描更新。"""
     now = _survivors(results)
     ran = sorted({mod for mod, _, _ in results})
     old = (set(json.loads(BASELINE.read_text(encoding="utf-8"))["survivors"])
            if BASELINE.exists() else set())
+    if write and partial:
+        print("!! 拒绝: --since/--changed 只扫改动行, 用它写基线会抹掉未扫到的已知条目。"
+              "\n   基线请用全量扫描更新: python3 mutate_auto.py --baseline")
+        return 1
     if write:
         # 只替换跑过模块的条目, 其余模块的既有条目原样保留
         merged = sorted([s for s in old if s.split("|")[0] not in ran] + now)
@@ -273,7 +280,7 @@ def check_against_baseline(results, write=False):
         return 1
     known = {s for s in old if s.split("|")[0] in ran}   # 只与跑过的模块比
     new = [s for s in now if s not in known]
-    fixed = [s for s in sorted(known) if s not in now]
+    fixed = [] if partial else [s for s in sorted(known) if s not in now]
     for s in new:
         print(f"  新增存活(测试缺口): {s}")
     for s in fixed:
@@ -295,4 +302,5 @@ if __name__ == "__main__":
     res = run(mods, limit=int(opts.get("--limit", 0)) or None,
               seed=int(opts.get("--seed", 0)), since=since)
     if flags & {"--baseline", "--check"}:
-        sys.exit(check_against_baseline(res, write="--baseline" in flags))
+        sys.exit(check_against_baseline(res, write="--baseline" in flags,
+                                        partial=since is not None))

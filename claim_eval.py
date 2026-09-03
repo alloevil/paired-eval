@@ -20,6 +20,7 @@
     mcnemar_exact(n_a_only, n_b_only)     # 二值配对: 不一致对的精确双侧检验
     holm_adjust(pvalues)                  # 多重比较: Holm-Bonferroni 控制 FWER
     interpret(compare, n_units)           # 结论翻译: null 强制附可排除范围
+    p_floor(n) / min_units_for_alpha(a)   # 检验的 p 地板与所需最小单元数
 适配:
     Meter / make_resilient / throttled_pmap   # 成本计量 / 有界重试 / 限并发
 """
@@ -461,6 +462,35 @@ def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, st
             "alpha": alpha, "step": step} if detail else None
 
 
+def p_floor(n, resamples=10000):
+    """配对符号翻转检验在 n 个单元下的最小可能双侧 p —— 与效应大小无关的硬地板。
+    2^n 种符号排列里, 完美分离只占两端各一种, 故 p >= 2/2^n; 重采样实现另有
+    1/(resamples+1) 的下限, 取两者较大。
+    实测踩坑(第115轮): 3 个案例得 Δ=+0.911 CI=[+0.893,+0.926] 却 p=0.252 —— 区间
+    把 0 排除十万八千里, 检验却说"不显著", 因为 n=3 的地板就是 0.25。
+    设计阶段用它定最小案例数: alpha=0.05 -> 需 n>=6(2/2^6=0.031)。
+    这是 MDE 的另一面: MDE 问"能检出多小的效应", p_floor 问"再大的效应能拿到多小的 p"。
+    """
+    if n < 1:
+        raise ValueError(f"n 必须 >=1, 得到 {n}")
+    return max(2 / 2 ** n, 1 / (resamples + 1)) if n < 64 else 1 / (resamples + 1)
+
+
+def min_units_for_alpha(alpha=0.05, resamples=10000):
+    """满足 p_floor(n) < alpha 的最小配对单元数。设计阶段先问这个, 再谈效应量。
+    严格小于, 与显著判据 p < alpha 对齐: 地板恰好等于 alpha 时显著性仍不可达。
+    """
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha 必须在 (0,1), 得到 {alpha}")
+    n = 1
+    while p_floor(n, resamples) >= alpha:
+        n += 1
+        if n > 64:
+            raise ValueError(f"alpha={alpha} 小于重采样下限 {1/(resamples+1)}, "
+                             f"需增大 resamples")
+    return n
+
+
 def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0):
     """把配对比较结果翻译成可报告结论 —— null 分支强制附"能排除多大效应"。
     不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
@@ -481,9 +511,33 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0):
                        f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}] "
                        f"p={p:.4f} (n={n})")
         return out
-    mde = detectable_effect(n, alpha=alpha, sims=sims, seed=seed) if n >= 1 else None
+    if n < 1:
+        # 没有配对单元: 连"地板"都无从谈起, 这是无信息而非检验无力(合成报告场景)
+        out["verdict"] = "null"
+        out["p_floor"] = None
+        out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
+                       f"不能当作『无差异』的证据")
+        return out
+    floor = p_floor(n)
+    if floor >= alpha:   # 地板等于 alpha 时显著性也不可达(判据是 p < alpha)
+        # p 被样本量地板卡死: 效应再大也拿不到显著, 报"不显著"是误导
+        try:
+            need = f"需至少 {min_units_for_alpha(alpha)} 个单元"
+        except ValueError:
+            # alpha 已触及重采样下限, 加单元无用 —— 报告函数在此不得抛错
+            need = f"alpha 已触及重采样下限, 增加单元无用, 需提高 resamples"
+        out["verdict"] = "null"
+        out["rules_out"] = None
+        out["p_floor"] = floor
+        out["text"] = (f"检验无力: n={n} 时最小可能 p 是 {floor:.3f} >= alpha={alpha}, "
+                       f"效应再大也不可能显著(点估计 Δ={compare['mean_diff']:+.3f}, "
+                       f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}]) "
+                       f"—— {need}")
+        return out
+    mde = detectable_effect(n, alpha=alpha, sims=sims, seed=seed)   # n>=1 已由上方保证
     out["verdict"] = "null"
     out["rules_out"] = mde
+    out["p_floor"] = floor
     if mde is None:
         out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
                        f"不能当作『无差异』的证据")

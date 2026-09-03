@@ -890,10 +890,14 @@ def test_interpret_forces_null_bounds():
     sig = ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20))
     assert sig["verdict"] == "significant" and sig["rules_out"] is None
     assert "显著" in sig["text"] and "CI95" in sig["text"]
-    # 小样本 null: MDE 不可达 -> 必须标为无信息, 不许被当成"无差异"
+    # 小样本 null: n=2 时 p 地板(0.5)就超过 alpha, 故正确诊断是"检验无力"而非"无信息"
+    # —— 第115轮加 p_floor 后本断言从"无信息"改到这里: 新逻辑给出更准的病因。
     weak = ce.interpret(ce.paired_compare([1.0, 0.0], [1.0, 0.0]))
     assert weak["verdict"] == "null" and weak["rules_out"] is None
-    assert "无信息" in weak["text"]
+    assert "检验无力" in weak["text"] and weak["p_floor"] == 0.5
+    # 真正的"无信息": 连单元都没有(合成报告), 地板无从谈起
+    none_units = ce.interpret(ce.paired_compare([1.0], [1.0]), n_units=0)
+    assert "无信息" in none_units["text"] and none_units["p_floor"] is None
     # 大样本 null: 必须给出具体可排除范围
     tight = ce.interpret(ce.paired_compare([1.0, 0.0] * 8, [1.0, 0.0] * 8), n_units=80)
     assert tight["verdict"] == "null" and tight["rules_out"] == 0.1
@@ -927,6 +931,131 @@ def test_interpret_boundaries():
     zero = ce.interpret(c, n_units=0, alpha=p)
     assert zero["verdict"] == "null" and zero["rules_out"] is None and zero["n_units"] == 0
     assert "无信息" in zero["text"]
+
+
+
+
+def test_p_floor_and_min_units():
+    """p 地板: n 个配对单元下再大的效应也拿不到比 2/2^n 更小的 p。
+    第115轮实测踩坑: 3 案例得 Δ=+0.911 CI 排除 0 十万八千里, p 却是 0.252。"""
+    assert ce.p_floor(1) == 1.0, "1 个单元: 两种符号排列, 双侧 p 恒为 1"
+    assert ce.p_floor(3) == 0.25 and ce.p_floor(6) == 2 / 64
+    assert ce.p_floor(7) < 0.02
+    # 大 n 时重采样下限接管, 不再是 2/2^n(那会下溢成 0)
+    assert ce.p_floor(100, resamples=999) == 1 / 1000
+    assert ce.p_floor(200) == ce.p_floor(100) > 0, "极大 n 不得返回 0"
+    # 与实际检验一致: 完美分离时实测 p 应贴着地板(重采样有 ±1 计数抖动)
+    for n in (3, 4, 5, 6):
+        got = ce.paired_compare([1.0] * n, [0.0] * n)["p_value"]
+        assert got >= ce.p_floor(n) * 0.95, f"n={n}: 实测 p={got} 低于地板 {ce.p_floor(n)}"
+        assert got <= ce.p_floor(n) * 1.5, f"n={n}: 完美分离的 p 应贴着地板, 得 {got}"
+    try:
+        ce.p_floor(0)
+        raise AssertionError("n=0 应报错")
+    except ValueError as e:
+        assert "必须 >=1" in str(e)
+    # 最小单元数: alpha 越严要求越多
+    assert ce.min_units_for_alpha(0.05) == 6 and ce.min_units_for_alpha(0.01) == 8
+    assert ce.min_units_for_alpha(0.5) < ce.min_units_for_alpha(0.05)
+    for bad in (0, 1, -0.1, 1.5):
+        try:
+            ce.min_units_for_alpha(bad)
+            raise AssertionError(f"alpha={bad} 应报错")
+        except ValueError:
+            pass
+
+
+def test_interpret_distinguishes_powerless_test_from_null():
+    """三种"没显著"必须分开: 检验无力(p 地板 > alpha) / 无信息(MDE 不可达) /
+    有界的 null。混为一谈会让"样本不够"冒充"没有差异"。"""
+    # 效应巨大但 n=3: 必须说"检验无力", 且给出所需单元数, 不许报 rules_out
+    weak = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3))
+    assert weak["verdict"] == "null" and weak["rules_out"] is None
+    assert "检验无力" in weak["text"] and "需至少 6 个单元" in weak["text"]
+    assert weak["p_floor"] == 0.25
+    assert "+1.000" in weak["text"], "无力时仍须报点估计与 CI, 否则读者以为没效应"
+    # n=6 同样效应: 地板降到 0.031 < 0.05, 于是判显著
+    ok = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6))
+    assert ok["verdict"] == "significant"
+    # n=6 但真无差异: 走有界 null 分支(有 rules_out, 不提"检验无力")
+    tie = ce.interpret(ce.paired_compare([1.0, 0.0] * 3, [1.0, 0.0] * 3))
+    assert tie["verdict"] == "null" and "检验无力" not in tie["text"]
+    assert tie["p_floor"] == 2 / 64
+    # alpha 更严时同一 n=6 会翻回"检验无力"
+    strict = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6), alpha=0.01)
+    assert "检验无力" in strict["text"] and "需至少 8 个单元" in strict["text"]
+
+
+
+
+def test_p_floor_knife_edges():
+    """地板恰好等于 alpha 时显著性仍不可达(判据是 p < alpha) —— 变异测试在
+    第115轮抓到这处: 原本写的 floor > alpha 会把这种设计放行为"可能显著"。"""
+    a = 2 / 64                                   # 恰好是 p_floor(6)
+    assert ce.p_floor(6) == a
+    # n=6 且 alpha 恰好等于地板: 必须判"检验无力", 并要求更多单元
+    r = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6), alpha=a)
+    assert "检验无力" in r["text"], r["text"]
+    assert "需至少 7 个单元" in r["text"], r["text"]
+    # alpha 略大于地板并不够: 地板 2/2^n 是理论下界, 重采样实测 p 落在其上方
+    # (n=6 完美分离: 地板 0.03125, 实测 ~0.032)。故 alpha=地板*1.01 仍不显著。
+    c6 = ce.paired_compare([1.0] * 6, [0.0] * 6)
+    assert a < c6["p_value"] < a * 1.2, f"实测 p 应略高于地板: {c6['p_value']} vs {a}"
+    assert ce.interpret(c6, alpha=a * 1.01)["verdict"] == "null"
+    assert ce.interpret(c6, alpha=a * 1.5)["verdict"] == "significant"
+    # min_units 与地板一致(严格小于), 它算的是理论下界, 不含重采样抖动
+    assert ce.min_units_for_alpha(a) == 7 and ce.min_units_for_alpha(a * 1.01) == 6
+    # n=1 的诊断是"检验无力"(地板 1.0), 不是"无信息" —— 后者专指没有单元
+    one = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), n_units=1)
+    assert "检验无力" in one["text"] and one["p_floor"] == 1.0
+    assert "无信息" not in one["text"]
+    # 逐步递增不得跳号: 每个 alpha 的答案都要精确
+    assert [ce.min_units_for_alpha(x) for x in (0.5, 0.2, 0.1, 0.05, 0.02, 0.01)] == \
+        [3, 4, 5, 6, 7, 8]
+    # alpha 边界的报错措辞要点明范围, 否则与"低于重采样下限"混淆
+    for bad in (0, 1):
+        try:
+            ce.min_units_for_alpha(bad)
+            raise AssertionError(f"alpha={bad} 应报错")
+        except ValueError as e:
+            assert "必须在 (0,1)" in str(e), str(e)
+    try:
+        ce.min_units_for_alpha(1e-9, resamples=100)
+        raise AssertionError("低于重采样下限时应报错")
+    except ValueError as e:
+        assert "需增大 resamples" in str(e), str(e)
+
+
+
+
+def test_p_floor_resample_region_is_exact():
+    """中段 n(排列地板已低于重采样地板, 但 n 仍 <64)必须取重采样地板的精确值。
+    变异测试第115轮抓到这段没被覆盖: 把 1/(resamples+1) 写成 2/(resamples+1) 或
+    1/(resamples+2) 都能通过原有断言 —— 因为原测试只探了 n<15 与 n>=64 两头。"""
+    # 交叉点: 2/2^n 何时降到重采样地板以下
+    assert ce.p_floor(14, 10000) == 2 / 2 ** 14, "n=14 时排列地板仍占优"
+    assert ce.p_floor(20, 10000) == 1 / 10001, "n=20 时重采样地板接管, 且须精确"
+    assert ce.p_floor(40, 10000) == 1 / 10001
+    assert ce.p_floor(63, 10000) == 1 / 10001, "63 仍走 max 分支"
+    assert ce.p_floor(64, 10000) == 1 / 10001, "64 走 else 分支, 值必须相同"
+    # 换 resamples: 分子分母都要对
+    assert ce.p_floor(20, 999) == 1 / 1000 and ce.p_floor(11, 999) == 1 / 1000
+    assert ce.p_floor(10, 999) == 2 / 2 ** 10, "n=10 时 2/1024 仍低于 1/1000"
+    # 单调不增: 地板不会因 n 变大而升高
+    vals = [ce.p_floor(n) for n in range(1, 70)]
+    assert all(b <= a for a, b in zip(vals, vals[1:])), "p_floor 必须单调不增"
+
+
+def test_min_units_error_reports_actual_floor():
+    """报错必须给出真实的重采样地板值 —— 读者据此决定把 resamples 提到多少。
+    写错这个数(2/(r+1) 或 1/(r+2))不影响任何行为, 只误导人, 故必须断言。"""
+    for rs in (100, 999, 10000):
+        try:
+            ce.min_units_for_alpha(1e-12, resamples=rs)
+            raise AssertionError("应报错")
+        except ValueError as e:
+            assert repr(1 / (rs + 1)) in str(e) or f"{1 / (rs + 1)}" in str(e), \
+                f"resamples={rs}: 报错未含真实地板 {1 / (rs + 1)}: {e}"
 
 
 if __name__ == "__main__":

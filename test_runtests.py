@@ -97,6 +97,39 @@ def test_multiple_files_all_reported():
         "[test_two.py] 2 tests passed" in out, out
 
 
+
+
+def test_summary_line_is_last_and_tail_safe():
+    """末行必须是汇总, 且成败都在其中 —— 逐文件输出被 tail 截断时靠它兜底。
+    第115轮真实踩坑: 两个套件已红, 我看 `| tail -3` 全绿就继续往下做了。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        work = pathlib.Path(tmp)
+        shutil.copy(ROOT / "runtests.sh", work / "runtests.sh")
+        # 全绿: 末行给出测试总数
+        (work / "test_a.py").write_text(
+            'def test_one():\n    pass\n\n\nif __name__ == "__main__":\n'
+            '    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]\n'
+            "    for t in tests:\n        t()\n"
+            '    print(f"\\n{len(tests)} tests passed")\n', encoding="utf-8")
+        r = subprocess.run(["sh", "runtests.sh"], cwd=work, capture_output=True, text=True)
+        last = r.stdout.strip().splitlines()[-1]
+        assert r.returncode == 0 and last == "=== 全部通过: 1 测试 ===", last
+        # 加一个失败文件, 并让它在字母序上排在前面 -> 逐文件的 FAILED 会被 tail 截掉
+        (work / "test_0bad.py").write_text(
+            'def test_bad():\n    assert False\n\n\nif __name__ == "__main__":\n'
+            '    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]\n'
+            "    for t in tests:\n        t()\n"
+            '    print(f"\\n{len(tests)} tests passed")\n', encoding="utf-8")
+        r = subprocess.run(["sh", "runtests.sh"], cwd=work, capture_output=True, text=True)
+        lines = r.stdout.strip().splitlines()
+        assert r.returncode != 0
+        assert lines[-1] == "=== 套件失败: test_0bad.py ===", lines[-1]
+        # 关键性质: 只看最后两行也能发现失败(这正是当初漏掉的场景)
+        assert any("失败" in l for l in lines[-2:]), lines[-2:]
+        # 失败文件名必须点出来, 否则还得重跑一次才知道是谁
+        assert "test_0bad.py" in lines[-1] and "test_a.py" not in lines[-1]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

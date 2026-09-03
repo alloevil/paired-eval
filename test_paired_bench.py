@@ -460,6 +460,29 @@ def test_run_interleaved_rotates_and_feeds_matrix():
 
 
 
+def test_trajectory_gate_fixture():
+    """门禁 fixture 的结构不变量(无需LLM): 篡改必须真的偏离资料, 忠实回答必须真的贴合资料。
+    fixture 若不满足这些, 门禁跑出的 recall/fp_rate 就毫无意义。"""
+    assert len(pb.TRAJECTORY_GATE) >= 1
+    case = pb.TRAJECTORY_GATE[0]
+    obs = case["observations"][0]["observation"]
+    assert obs and case["faithful"] and len(case["planted"]) == 2
+    assert {p["expect"] for p in case["planted"]} == {"distorted", "fabricated"}
+    # 忠实回答的关键数字必须都出现在资料里
+    for num in ("1100亿美元", "540亿美元", "850亿美元", "290亿美元"):
+        assert num in obs and num in case["faithful"], f"忠实回答与资料应共有 {num}"
+    dist = next(p["response"] for p in case["planted"] if p["expect"] == "distorted")
+    # 篡改后的数字必须不在资料里(否则"歪曲"其实有据, fixture 无效)
+    for num in ("2000亿美元", "900亿美元", "超过200%"):
+        assert num in dist and num not in obs, f"篡改数字 {num} 不应出现在资料中"
+    assert dist != case["faithful"]
+    fab = next(p["response"] for p in case["planted"] if p["expect"] == "fabricated")
+    assert fab.startswith(case["faithful"]) and len(fab) > len(case["faithful"]), \
+        "编造变体应是在忠实回答后追加内容"
+    for num in ("净利润", "员工总数"):
+        assert num in fab and num not in obs, f"追加内容 {num} 不应在资料中"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

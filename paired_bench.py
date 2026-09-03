@@ -396,14 +396,17 @@ def saturation(reports, max_span_s=3600, require_interleaved=True):
                     "informative": info}}
 
 
-def screen_tasks(candidates, models, n=2, **kw):
-    """新题入库前的信息量筛选: 交错跑一遍, 只保留非饱和(有区分力)的题。
-    纪律: 任务集不是想加就加 —— 恒过/恒败的题不提高功效, 只增加每次评测的成本。
-    实测教训: 12 道"更硬"的单步字符串/算术题(10字符倒序、1234×5678、第20个素数等)
-    对 smol+default 全部恒过, 本筛选阻止了它们入库 —— 提升区分力需要质变的难度
-    (多约束组合、长程、精度敏感), 不是同类题加长。
+def screen_tasks(candidates, models, n=2, confirm_n=6, **kw):
+    """新题入库前的两阶段信息量筛选。
+    阶段1(便宜): 全部候选交错跑 n 轮, 挑出非饱和的。
+    阶段2(复核): 被挑出的再跑 confirm_n 轮, 仍非饱和才算过关 —— 低 n 筛选会把噪声
+    标成"有区分力", 实测: 10 道多约束候选在 n=2 下挑出 1 道(0.5 vs 1.0),
+    n=6 复核后两侧 6/6、零不一致对, 该信号纯属噪声。confirm_n=None 可跳过复核。
+    另一条实测教训: 12 道"更硬"的单步字符串/算术题(10字符倒序、1234×5678、第20个素数)
+    对 smol+default 全部恒过 —— 提升区分力需要难度质变, 不是同类题加长。
     candidates 需满足 canonical 通过自身 check 且 id 不与 ALL_TASKS 冲突。
-    返回 {"kept","saturated_pass","saturated_fail","reports","saturation"}。"""
+    返回 {"kept","flagged","saturated_pass","saturated_fail","dropped_on_confirm",
+    "reports","saturation","confirm_saturation"}。"""
     existing = {t["id"] for t in ALL_TASKS}
     for c in candidates:
         if not c.get("id") or not c.get("instruction") or "check" not in c or "canonical" not in c:
@@ -415,7 +418,19 @@ def screen_tasks(candidates, models, n=2, **kw):
     run = run_interleaved(models, tasks=candidates, n=n, **kw)
     sat = saturation(run["reports"])
     by_id = {c["id"]: c for c in candidates}
-    return {"kept": [by_id[i] for i in sat["ids"]["informative"]],
-            "saturated_pass": [by_id[i] for i in sat["ids"]["saturated_pass"]],
-            "saturated_fail": [by_id[i] for i in sat["ids"]["saturated_fail"]],
-            "reports": run["reports"], "saturation": sat}
+    flagged = [by_id[i] for i in sat["ids"]["informative"]]
+    out = {"flagged": flagged,
+           "saturated_pass": [by_id[i] for i in sat["ids"]["saturated_pass"]],
+           "saturated_fail": [by_id[i] for i in sat["ids"]["saturated_fail"]],
+           "reports": run["reports"], "saturation": sat,
+           "confirm_saturation": None, "dropped_on_confirm": []}
+    if confirm_n is None or not flagged:
+        out["kept"] = list(flagged)
+        return out
+    run2 = run_interleaved(models, tasks=flagged, n=confirm_n, **kw)
+    sat2 = saturation(run2["reports"])
+    kept_ids = set(sat2["ids"]["informative"])
+    out["kept"] = [t for t in flagged if t["id"] in kept_ids]
+    out["dropped_on_confirm"] = [t for t in flagged if t["id"] not in kept_ids]
+    out["confirm_saturation"] = sat2
+    return out

@@ -316,11 +316,29 @@ def test_screen_tasks():
         next(c["instruction"] for c in cands if c["instruction"] in p)]
     weak = lambda p: {"输出 OK": "OK", "输出 IMPOSSIBLE": "no", "输出 SPLIT": "nope"}[
         next(c["instruction"] for c in cands if c["instruction"] in p)]
-    out = pb.screen_tasks(cands, {"a": good, "b": weak}, n=2)
-    assert [t["id"] for t in out["kept"]] == ["cand-split"], "只留有区分力的"
+    out = pb.screen_tasks(cands, {"a": good, "b": weak}, n=2, confirm_n=4)
+    assert [t["id"] for t in out["kept"]] == ["cand-split"], "稳定差异经复核仍留"
+    assert [t["id"] for t in out["flagged"]] == ["cand-split"]
+    assert out["dropped_on_confirm"] == [] and out["confirm_saturation"]["informative"] == 1
     assert [t["id"] for t in out["saturated_pass"]] == ["cand-easy"]
     assert [t["id"] for t in out["saturated_fail"]] == ["cand-hard"]
     assert out["saturation"]["informative"] == 1
+    # 噪声信号: 筛选阶段偶然分歧, 复核阶段消失 -> 必须被剔除(实测发生过)
+    flip = {"i": 0}
+
+    def noisy(prompt):
+        if "SPLIT" not in prompt:
+            return good(prompt)
+        flip["i"] += 1
+        return "SPLIT" if flip["i"] == 1 else "nope"   # 只在第一次答对
+
+    out2 = pb.screen_tasks(cands, {"a": noisy, "b": weak}, n=2, confirm_n=4)
+    assert [t["id"] for t in out2["flagged"]] == ["cand-split"], "低n筛选把噪声标成有信息"
+    assert out2["kept"] == [] and [t["id"] for t in out2["dropped_on_confirm"]] == ["cand-split"], \
+        "复核阶段必须剔除噪声信号"
+    # 可跳过复核
+    out3 = pb.screen_tasks(cands, {"a": good, "b": weak}, n=2, confirm_n=None)
+    assert [t["id"] for t in out3["kept"]] == ["cand-split"] and out3["confirm_saturation"] is None
     # 坏候选拦截
     bad_cases = [
         [{"id": "x", "instruction": "i", "check": lambda r: False, "canonical": "c"}],

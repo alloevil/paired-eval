@@ -84,6 +84,29 @@ def test_judge_insanity_guard():
 
 
 
+def test_judged_weight_share():
+    """按条数的 abstain_rate 会掩盖"高权重条目被弃权": 分数看着满分,
+    实际只判了 rubric 的一小部分 —— judged_weight_share 才是可用性判据。"""
+    def heavy_abstains(prompt, system, schema):
+        # 权重3的核心条弃权, 权重1的边缘条命中
+        return {"verdict": "abstain" if "核心" in prompt else "met", "reasoning": "r"}
+
+    crit = [{"text": "核心条", "weight": 3}, {"text": "边缘条", "weight": 1}]
+    m = re_.run_rubric("resp", crit, heavy_abstains)["metrics"]
+    assert m["score"] == 1.0, "剩下能判的都命中 -> 分数满分"
+    assert m["abstain_rate"] == 0.5, "按条数看只是一半弃权"
+    assert m["total_weight"] == 4 and m["judged_weight"] == 1
+    assert m["judged_weight_share"] == 0.25, "按权重看只判了四分之一 —— 这个满分不可用"
+    # 全判定时覆盖率为1
+    all_met = lambda p, s, sch: {"verdict": "met", "reasoning": "r"}
+    m2 = re_.run_rubric("resp", crit, all_met)["metrics"]
+    assert m2["judged_weight_share"] == 1.0 and m2["score"] == 1.0
+    # 全弃权: 无分数, 覆盖率为0(而非None混同"没有条目")
+    all_abstain = lambda p, s, sch: {"verdict": "abstain", "reasoning": "r"}
+    m3 = re_.run_rubric("resp", crit, all_abstain)["metrics"]
+    assert m3["score"] is None and m3["judged_weight_share"] == 0.0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

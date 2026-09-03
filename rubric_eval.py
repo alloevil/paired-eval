@@ -52,9 +52,13 @@ def verify_rubric(response, criteria, llm, reference=None, pmap=map):
 
 
 def aggregate_rubric(results):
-    """加权得分(abstain 不进分母) + abstain 率单列。"""
+    """加权得分(abstain 不进分母) + abstain 按条数与按权重双计量。
+    judged_weight_share 是关键诚实指标: abstain_rate 只数条数, 若被弃权的恰是高权重条目,
+    分数会显示 1.00 而实际上只判了 rubric 的一小部分。例: 权重 3 的核心条弃权、
+    权重 1 的边缘条命中 -> score=1.00 但 judged_weight_share=0.25, 这个分数不可用。"""
     met_w = sum(r["weight"] for r in results if r["verdict"] == "met")
     not_w = sum(r["weight"] for r in results if r["verdict"] == "not_met")
+    total_w = sum(r["weight"] for r in results)
     abstain = sum(r["verdict"] == "abstain" for r in results)
     denom = met_w + not_w
     return {
@@ -64,6 +68,8 @@ def aggregate_rubric(results):
         "met": sum(r["verdict"] == "met" for r in results),
         "not_met": sum(r["verdict"] == "not_met" for r in results),
         "abstain": abstain,
+        "total_weight": total_w, "judged_weight": denom,
+        "judged_weight_share": denom / total_w if total_w else None,
     }
 
 

@@ -331,6 +331,33 @@ def test_repeat_reports_dispersion():
     assert single["score_stdev"] is None and single["scored"] == 1
 
 
+def test_pair_dropped_reps_counted():
+    """evaluate_pair 剔出无效轮次时必须计数并归因:
+    静默丢弃会让 a_mean/b_mean 的分母悄悄变小, 报表看不出任何异常。"""
+    import rubric_eval as re_
+    state = {"i": 0}
+
+    def sometimes_all_abstain(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        state["i"] += 1
+        # 第3、4次调用(第2轮的两侧)全弃权 -> 该轮两侧 score 均为 None
+        return {"verdict": "abstain" if state["i"] in (3, 4) else "met", "reasoning": "r"}
+
+    t = {"id": "t-pair-drop", "verification": {"class": "rubric",
+         "criteria": [{"text": "条A", "weight": 1}]}}
+    out = et.evaluate_pair(t, "回答A", "回答B", n=3, llm=sometimes_all_abstain)
+    assert len(out["rows"]) == 3, "所有轮次都留痕"
+    assert out["scored_reps"] == 2, "只有2轮进入比较"
+    assert [d["rep"] for d in out["dropped_reps"]] == [1]
+    assert set(out["dropped_reps"][0]["sides"]) == {"a", "b"}, "两侧都无分数"
+    assert out["compare"]["n"] == 2, "配对检验只用有效轮次"
+    assert out["a_mean"] == 1.0 and out["b_mean"] == 1.0
+    # 无丢弃时为空列表
+    steady = lambda p, s, sch: {"verdict": "met", "reasoning": "r"}
+    clean = et.evaluate_pair(t, "A", "B", n=2, llm=steady)
+    assert clean["dropped_reps"] == [] and clean["scored_reps"] == 2
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

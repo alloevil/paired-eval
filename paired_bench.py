@@ -165,7 +165,15 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
     if not rows:
         raise ValueError("全部任务被成对丢弃,无可比数据")
     compare = ce.paired_compare([r["a"] for r in rows], [r["b"] for r in rows])
+    refusals = {"a": 0, "b": 0}
+    for d in dropped_detail:
+        for s in d["sides"]:
+            refusals[s] += 1
+    attempts = len(tasks)      # 单发: 每题每侧一次调用
     return {"rows": rows, "dropped": dropped, "dropped_detail": dropped_detail,
+            "refusals": refusals, "attempts_per_side": attempts,
+            "refusal_rate": {s: c / attempts if attempts else None
+                             for s, c in refusals.items()},
             "compare": compare}
 
 

@@ -216,7 +216,9 @@ def evaluate_pair(task, response_a, response_b, n=1, observations_a=None,
     judge 同样会跨窗漂移, 先判后判也可能不对称 —— "先把A全判完再判B"会把这两者
     混进系统差异(与 paired_bench.run_paired_repeated 同源, 那边有实测教训)。
     n>1 仅对 judge 类路由有意义(exact 类确定性)。
-    返回 {"task_id","n","rows":[{rep,a,b,a_first}],"a_mean","b_mean","compare"}。"""
+    返回 {"task_id","n","rows","scored_reps","dropped_reps","a_mean","b_mean","compare"}。
+    任一侧分数为 None(如 rubric 全弃权)的轮次会被剔出比较, 但必须计数并归因 ——
+    静默丢弃会让均值的分母悄悄变小。"""
     if n < 1:
         raise ValueError("n >= 1")
     rows = []
@@ -237,10 +239,16 @@ def evaluate_pair(task, response_a, response_b, n=1, observations_a=None,
             ra = side_a()
         rows.append({"rep": rep, "a": ra["score"], "b": rb["score"],
                      "a_first": a_first, "result_a": ra, "result_b": rb})
-    sa = [r["a"] for r in rows if r["a"] is not None and r["b"] is not None]
-    sb = [r["b"] for r in rows if r["a"] is not None and r["b"] is not None]
+    usable = [r for r in rows if r["a"] is not None and r["b"] is not None]
+    sa = [r["a"] for r in usable]
+    sb = [r["b"] for r in usable]
     if not sa:
         raise ValueError("两侧均无有效分数(全部为 None),无可比数据")
-    return {"task_id": task["id"], "n": n, "rows": rows,
+    # 被剔除的轮次必须计数并归因: 静默丢弃会让 a_mean/b_mean 的分母悄悄变小
+    dropped_reps = [{"rep": r["rep"],
+                     "sides": [s for s, v in (("a", r["a"]), ("b", r["b"])) if v is None]}
+                    for r in rows if r not in usable]
+    return {"task_id": task["id"], "n": n, "rows": rows, "scored_reps": len(usable),
+            "dropped_reps": dropped_reps,
             "a_mean": sum(sa) / len(sa), "b_mean": sum(sb) / len(sb),
             "compare": ce.paired_compare(sa, sb)}

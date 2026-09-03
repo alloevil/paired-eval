@@ -21,6 +21,12 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
 纪律: 单发分歧项必须经 run_repeated 复核才许下结论(有误标前科);
 多系统比较必须走交错路径, 逐系统分别 run_repeated 再并排会被 reliability_matrix 拒绝。
+最近一次发布态真机验证(全路由 + 近15轮新增字段):
+    exact      reason=no_slot 正确归因, 批次 non_attempt_reasons 汇总正常
+    retrieval   观点句进 unverifiable_claims, queries 逐条留痕且中性(无声称值)
+    trajectory  must_ground 0.67 vs allow_parametric 1.00(parametric=1), 加权>未加权
+                说明那条无据补充是 detail 而非 core —— 重大幻觉不被无害细节稀释
+    bench       orders 逐轮交替, refusals/attempts 齐备; RUBRIC_GATE 分离度 1.00
 功效上限(诚实披露): ALL_TASKS 只有 28 题, claim_eval.detectable_effect(28)≈0.27 ——
 即"较优系统需在 ≥27% 的题上单方面胜出且几乎无反向失误"才可能显著。这是冒烟集,
 不是能定论的评测集; 要检出 10% 量级的差异需上百道配对任务(见 required_tasks)。

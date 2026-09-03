@@ -462,16 +462,19 @@ def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, st
 def run_world(text, llm, search, pmap=map, max_retries=1, corroborate=False):
     """开放世界全流程。pmap 可注入并行 map。
     观点/hedge 句不进 precision 分母,但单独计量 —— unverifiable_rate 高 = 模型在用
-    不可验证的话填充篇幅,该指标不可见时这种行为完全隐形。"""
+    不可验证的话填充篇幅,该指标不可见时这种行为完全隐形。
+    unverifiable_claims 返回被排除的条目原文: 只报数量无法审计"抽取器是否把难验证的
+    事实句误标成观点句" —— 那是绕过评分最省力的路径, 必须能被人抽查。"""
     all_claims = _extract_all(text, llm)
     claims = [c for c in all_claims if c["verifiable"]]
+    unverifiable = [c for c in all_claims if not c["verifiable"]]
     results = list(pmap(
         lambda c: verify_world(c, llm, search, max_retries, corroborate), claims))
-    n_unv = len(all_claims) - len(claims)
     metrics = aggregate_world(results)
-    metrics["unverifiable"] = n_unv
-    metrics["unverifiable_rate"] = n_unv / len(all_claims) if all_claims else None
-    return {"claims": results, "metrics": metrics}
+    metrics["unverifiable"] = len(unverifiable)
+    metrics["unverifiable_rate"] = (len(unverifiable) / len(all_claims)
+                                    if all_claims else None)
+    return {"claims": results, "unverifiable_claims": unverifiable, "metrics": metrics}
 
 
 def run_trajectory(claim_texts, observations, llm, pmap=map):

@@ -100,7 +100,9 @@ def evaluate(task, response=None, observations=None,
                            max_retries=max_retries, corroborate=corroborate)
         m = out["metrics"]
         return _finish({**base, "score": m["weighted_precision"], "verdict": None,
-                        "metrics": m, "details": out["claims"]})
+                        "metrics": m, "details": out["claims"],
+                        # 被排除的观点/hedge 句原文一并带出: 只报数量无法抽查误标
+                        "unverifiable_claims": out["unverifiable_claims"]})
 
     # trajectory: 从最终回答抽 claim, 逐条对轨迹 observation 做 grounding
     if cls == "trajectory":

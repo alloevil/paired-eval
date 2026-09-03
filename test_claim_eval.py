@@ -624,6 +624,22 @@ def test_query_audit_trail():
     assert r_conf["corroboration_verdict"] == "contradicted" and r_conf["corroborated"] is True
 
 
+def test_unverifiable_claims_exposed():
+    """被排除的观点/hedge 句必须能被抽查: 只报数量, 就无法发现抽取器把
+    难验证的事实句误标成观点句 —— 那是绕过评分最省力的路径。"""
+    out = ce.run_world("DOC", mock_llm, mock_search)
+    unv = out["unverifiable_claims"]
+    assert [c["text"] for c in unv] == ["C观点句"], "被排除条目的原文必须带出"
+    assert out["metrics"]["unverifiable"] == len(unv) == 1
+    assert all(c["verifiable"] is False for c in unv)
+    # 计分条目与被排除条目不重叠, 且两者之和等于抽取总数
+    scored = [c["text"] for c in out["claims"]]
+    assert "C观点句" not in scored and len(scored) + len(unv) == 4
+    # 全部可验证时为空列表(不是None: "没有被排除"是明确事实)
+    out2 = ce.run_world("CLEAN_DOC", mock_llm, mock_search)
+    assert out2["unverifiable_claims"] == [] and out2["metrics"]["unverifiable"] == 0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

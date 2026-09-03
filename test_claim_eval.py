@@ -474,6 +474,29 @@ def test_planner_matches_exact_test():
 
 
 
+def test_detectable_effect():
+    """MDE 的性质: 随 n 单调下降, 随反向失误率上升, 与 required_tasks 互为反问题。"""
+    mdes = [ce.detectable_effect(n, sims=200) for n in (28, 56, 112)]
+    assert all(m is not None for m in mdes)
+    assert mdes[0] > mdes[1] > mdes[2], f"n 越大 MDE 越小: {mdes}"
+    assert ce.detectable_effect(28, p_loss=0.05, sims=200) > ce.detectable_effect(28, sims=200), \
+        "存在反向失误时需要更大的胜率才能检出"
+    # 反问题一致性: 用 MDE 反查所需 n, 应回到同一量级(容一个网格步)
+    n = 56
+    mde = ce.detectable_effect(n, sims=300)
+    need = ce.required_tasks(mde, 0.001, sims=300)
+    assert need is not None and need <= n * 1.3, f"MDE={mde} 反查 n={need} 与 {n} 不自洽"
+    # 样本太小时任何效应都不可检出(不一致对不足以达到 alpha)
+    assert ce.detectable_effect(3, sims=100) is None
+    for bad in ((0,), (10, 1.0)):
+        try:
+            ce.detectable_effect(*bad)
+            assert False, f"非法参数应拒绝: {bad}"
+        except ValueError:
+            pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -15,8 +15,10 @@
     wilson_ci(k, n)                       # 比例的 95% 置信区间
     paired_compare(scores_a, scores_b)    # 同任务配对 A/B: 置换检验 p 值 + bootstrap CI
     required_tasks(p_win, p_loss)         # 功效分析: 要多少任务才能检出这个差距
+    detectable_effect(n, p_loss)          # 反问题: 任务集固定为 n 时最小可检出效应(MDE)
     pass_hat_k(successes, n, k)           # 可靠性: n 次运行中任取 k 次全过的概率
     mcnemar_exact(n_a_only, n_b_only)     # 二值配对: 不一致对的精确双侧检验
+    holm_adjust(pvalues)                  # 多重比较: Holm-Bonferroni 控制 FWER
 适配:
     Meter / make_resilient / throttled_pmap   # 成本计量 / 有界重试 / 限并发
 """
@@ -377,6 +379,35 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
         if power_at(n) >= power:
             return n
         n = max(n + 4, int(n * 1.4))
+    return None
+
+
+def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, step=0.01):
+    """required_tasks 的反问题: 任务集固定为 n 时, 最小可检出的胜率是多少(MDE)。
+    实践中任务集通常是给定的 —— 此时诚实报告需要的不是"再加多少题", 而是
+    "这个任务集根本看不见小于多大的差异"。同样用 mcnemar_exact 判定, 与检验器一致。
+    返回最小 p_win(在 p_loss 固定下达到 power 的胜率), 上界内不可达则返回 None。"""
+    if n < 1:
+        raise ValueError("n >= 1")
+    if not 0 <= p_loss < 1:
+        raise ValueError("需要 0 <= p_loss < 1")
+    rng = random.Random(seed)
+    p_win = max(p_loss + step, step)
+    while p_win + p_loss <= 1.0:
+        hits = 0
+        for _ in range(sims):
+            a_only = b_only = 0
+            for _ in range(n):
+                r = rng.random()
+                if r < p_win:
+                    a_only += 1
+                elif r < p_win + p_loss:
+                    b_only += 1
+            if mcnemar_exact(a_only, b_only) < alpha:
+                hits += 1
+        if hits / sims >= power:
+            return round(p_win, 10)
+        p_win = round(p_win + step, 10)
     return None
 
 

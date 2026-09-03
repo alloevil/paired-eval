@@ -11,9 +11,13 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
     run_paired_repeated(a, b, tasks, n=8)     # 两系统交错重复(ABBA) + 逐轮不一致对/McNemar
     run_interleaved({name: model}, tasks, n)  # N系统交错重复(顺序轮转) -> 喂 reliability_matrix
     reliability_matrix(reports)               # 跨系统逐题透视 + 分歧标记(三道守卫)
+    pairwise_compare(reports)                 # N系统两两比较 + Holm 多重比较校正
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
 纪律: 单发分歧项必须经 run_repeated 复核才许下结论(有误标前科);
 多系统比较必须走交错路径, 逐系统分别 run_repeated 再并排会被 reliability_matrix 拒绝。
+功效上限(诚实披露): ALL_TASKS 只有 28 题, claim_eval.detectable_effect(28)≈0.27 ——
+即"较优系统需在 ≥27% 的题上单方面胜出且几乎无反向失误"才可能显著。这是冒烟集,
+不是能定论的评测集; 要检出 10% 量级的差异需上百道配对任务(见 required_tasks)。
 """
 
 import time

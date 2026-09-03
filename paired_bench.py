@@ -12,6 +12,12 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
     run_interleaved({name: model}, tasks, n)  # N系统交错重复(顺序轮转) -> 喂 reliability_matrix
     reliability_matrix(reports)               # 跨系统逐题透视 + 分歧标记(三道守卫)
     pairwise_compare(reports)                 # N系统两两比较 + Holm 多重比较校正
+    screen_tasks(candidates, models)          # 新题入库前两阶段信息量筛选(筛+复核)
+    saturation(reports)                       # 有效样本诊断: 饱和题贡献零信息
+门禁 fixture(开箱即用, 没有 fixture 的门禁不会被跑):
+    TRAJECTORY_GATE -> claim_eval.trajectory_selfcheck(pb.TRAJECTORY_GATE, llm)
+    WORLD_GATE      -> claim_eval.selfcheck(pb.WORLD_GATE, llm, search)  # 依赖实时检索,会腐坏
+    RUBRIC_GATE     -> rubric_eval.rubric_canary(g["criteria"], g["good"], g["fooling"], llm)
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
 纪律: 单发分歧项必须经 run_repeated 复核才许下结论(有误标前科);
 多系统比较必须走交错路径, 逐系统分别 run_repeated 再并排会被 reliability_matrix 拒绝。
@@ -455,3 +461,33 @@ TRAJECTORY_GATE = [{
         {"response": _GATE_FABRICATED, "expect": "fabricated", "desc": "追加资料中不存在的净利润与员工数"},
     ],
 }]
+
+
+# ---------------------------------------------------------------- world / rubric 门禁 fixture
+
+# claim_eval.selfcheck 的开箱样例(本会话实测两次, recall 2/2, 干净文档 fp 0)。
+# 注意与 TRAJECTORY_GATE 的本质差别: world 门禁依赖实时检索, 是"会腐坏"的 fixture ——
+# 事实会变(高管变动、营收更新)、检索结果会漂移, 因此需定期复验并更新 planted 真值;
+# trajectory/rubric fixture 自洽封闭(证据就在 case 里), 不会因外部世界变化而失效。
+WORLD_GATE = [
+    {"text": "腾讯公司成立于1998年,创始人包括马化腾和张志东。微信于2013年1月发布。"
+             "腾讯总部位于深圳。2023年腾讯全年营收约为8500亿元人民币。",
+     "planted": [{"substr": "2013", "desc": "微信发布年份(真值2011年1月)"},
+                 {"substr": "8500", "desc": "2023营收8500亿(真值约6090亿)"}]},
+    # planted 为空 = 干净文档, 用于测误报率(缺了它只能测查全, 无法发现"来者皆错"的判定器)
+    {"text": "腾讯公司成立于1998年11月,总部位于深圳。马化腾是腾讯的创始人之一。"
+             "微信是腾讯旗下的即时通讯产品。", "planted": []},
+]
+
+# rubric_eval.rubric_canary 的开箱样例(本会话实测: good=1.00 fooling=0.00 separation=1.00)。
+# fooling 是"空洞奉承"型回答: 语气专业、零具体信息 —— 能被它骗到的 rubric 不该上线。
+RUBRIC_GATE = {
+    "criteria": [
+        {"text": "回答给出了2023年腾讯研发投入的具体金额", "weight": 3},
+        {"text": "回答说明了研发投入的同比变化幅度", "weight": 2},
+        {"text": "回答为关键数据标注了信息来源", "weight": 1},
+    ],
+    "good": "根据腾讯2023年报,2023年研发投入为640亿元,同比增长约4%。",
+    "fooling": "本回答对腾讯的研发投入情况进行了全面深入且详实的分析,视角专业,"
+               "结论可靠,极具参考价值。",
+}

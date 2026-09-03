@@ -483,6 +483,33 @@ def test_trajectory_gate_fixture():
         assert num in fab and num not in obs, f"追加内容 {num} 不应在资料中"
 
 
+def test_world_and_rubric_gate_fixtures():
+    """两个门禁 fixture 的结构不变量(无需LLM)。fixture 悄悄失效的门禁比没门禁更危险:
+    它会持续输出漂亮的 recall 而实际什么都没测。"""
+    # WORLD_GATE: 必须同时含"带植入错误的文档"与"干净文档"(后者才能测误报)
+    assert len(pb.WORLD_GATE) >= 2
+    dirty = [c for c in pb.WORLD_GATE if c["planted"]]
+    clean = [c for c in pb.WORLD_GATE if not c["planted"]]
+    assert dirty and clean, "缺干净文档就只能测查全,发现不了来者皆错的判定器"
+    for c in dirty:
+        for p in c["planted"]:
+            assert p["substr"] in c["text"], f"植入特征 {p['substr']} 必须真的出现在文档里"
+            assert p.get("desc"), "植入错误必须写明真值,否则无法复验"
+    for c in clean:
+        for p in dirty[0]["planted"]:
+            assert p["substr"] not in c["text"], \
+                f"干净文档不得含植入特征 {p['substr']}(否则误报统计被污染)"
+    # RUBRIC_GATE: criteria 合法, 且 fooling 必须不含 good 的具体信息
+    g = pb.RUBRIC_GATE
+    assert g["criteria"] and all(c["text"] and c["weight"] > 0 for c in g["criteria"])
+    assert g["good"] != g["fooling"]
+    for token in ("640", "4%"):
+        assert token in g["good"] and token not in g["fooling"], \
+            f"fooling 不得含具体数据 {token} —— 否则它不是空洞奉承,分离度失去意义"
+    assert len(g["fooling"]) >= 20, "fooling 应是像样的长句(靠长度也骗不过判定器)"
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

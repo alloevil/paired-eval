@@ -282,13 +282,15 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
     return {"reports": reports, "dropped": dropped}
 
 
-def reliability_matrix(reports, divergence=0.25, max_span_s=3600):
-    """多系统 run_repeated 报告透视: 每题一行,各系统 pass@1 并排,
-    spread = 跨系统最大差距, spread >= divergence 标为分歧项。
-    分歧项是两类信号之一: 真实能力差(可能非单调), 或题目本身有歧义,都值得人工看一眼。
-    reports: {"系统名": run_repeated 返回值}; 各系统任务集必须一致。
-    measured_at 齐备时校验测量窗口跨度 <= max_span_s(默认1小时): 可靠性会跨会话漂移,
-    把不同时间窗的报告并排等于混用尺子(与 summarize 的混指纹拒绝同源)。max_span_s=None 关闭。"""
+def reliability_matrix(reports, divergence=0.25, max_span_s=3600, require_interleaved=True):
+    """多系统可靠性透视: 每题一行,各系统 pass@1 并排,
+    spread = 跨系统最大差距, spread >= divergence 标为分歧项(真实能力差 或 题目歧义,人工分诊)。
+    reports 应来自 run_interleaved(正确路径); 各系统任务集必须一致。三道守卫:
+    - 任务集一致: id 序列不同直接报错。
+    - 测量窗口: measured_at 齐备时校验跨度 <= max_span_s(默认1h), 可靠性跨会话漂移。
+    - 交错性: 同题各系统时戳必须一致(交错测量的标志)。逐系统分别调 run_repeated 再并排
+      是错误路径 —— 跨窗漂移与顺序效应会混进系统差异, 本仓库据此得出过假的"非单调洞"。
+    require_interleaved=False / max_span_s=None 可显式关闭对应守卫。"""
     if not reports:
         raise ValueError("reports 不能为空")
     stamps = [r["measured_at"] for rep in reports.values() for r in rep if "measured_at" in r]
@@ -303,6 +305,13 @@ def reliability_matrix(reports, divergence=0.25, max_span_s=3600):
     for nm in names[1:]:
         if [r["id"] for r in reports[nm]] != ids:
             raise ValueError("各系统的任务集必须一致(id 序列不同)")
+    if require_interleaved and len(names) > 1:
+        for i in range(len(ids)):
+            st = [reports[nm][i].get("measured_at") for nm in names]
+            if all(s is not None for s in st) and len(set(st)) > 1:
+                raise ValueError(
+                    f"任务 {ids[i]} 各系统时戳不一致,判定为顺序测量(非交错): "
+                    "请用 run_interleaved 交错重测,或显式 require_interleaved=False 承担混淆风险")
     rows = []
     for i, tid in enumerate(ids):
         row = {"id": tid}

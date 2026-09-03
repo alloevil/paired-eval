@@ -190,11 +190,32 @@ def test_measurement_window_guard():
         assert False, "跨2小时的报告并排应报错"
     except ValueError as e:
         assert "漂移" in str(e)
-    assert pb.reliability_matrix({"a": fresh, "b": stale}, max_span_s=None), "可显式关闭"
+    assert pb.reliability_matrix({"a": fresh, "b": stale}, max_span_s=None,
+                                 require_interleaved=False), "两道守卫均可显式关闭"
     # 合成报告(无时戳)不受影响: 向后兼容
     synth = [{"id": "if-upper", "n": 8, "successes": 8, "pass_at_1": 1.0,
               "pass_hat_k": 1.0, "runs": []}]
     assert pb.reliability_matrix({"a": synth, "b": synth})
+
+
+def test_sequential_measurement_rejected():
+    """逐系统分别 run_repeated 再并排 = 顺序测量(错误路径), 必须被拦下 ——
+    本仓库正是这样得出过假的"非单调洞"结论。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] == "if-upper"]
+    good = lambda p: "HELLO WORLD"
+    bad = lambda p: "hello world"
+    seq = {"a": pb.run_repeated(good, tasks=tasks, n=2),
+           "b": pb.run_repeated(bad, tasks=tasks, n=2)}
+    try:
+        pb.reliability_matrix(seq)
+        assert False, "顺序测量应被拒绝"
+    except ValueError as e:
+        assert "顺序测量" in str(e)
+    assert pb.reliability_matrix(seq, require_interleaved=False), "可显式承担风险"
+    # 交错路径同题共享时戳,顺利通过
+    inter = pb.run_interleaved({"a": good, "b": bad}, tasks=tasks, n=2)["reports"]
+    rows = pb.reliability_matrix(inter)
+    assert rows[0]["a"] == 1.0 and rows[0]["b"] == 0.0 and rows[0]["divergent"]
 
 
 

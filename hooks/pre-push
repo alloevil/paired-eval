@@ -4,6 +4,8 @@
 # 分层理由: pre-commit 必须快(~1s), 否则会被 --no-verify 绕过, 那比没有门禁更糟;
 # 变异检查按改动行收窄后约 30s, 放在推送这个低频动作上正合适。
 # 绕过需显式 --no-verify(等于签字承认新代码可能没有测试保护)。
+# 本钩子与 pre-commit 的行为由 check_hooks.py 集成验证(建临时仓库+裸远端跑真钩子,
+# 约30秒)。它刻意不叫 test_*.py: 放进 1.5 秒的快速套件会让 pre-commit 变慢。
 set -e
 root=$(git rev-parse --show-toplevel)
 cd "$root"

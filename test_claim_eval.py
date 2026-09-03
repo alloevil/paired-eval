@@ -601,6 +601,29 @@ def test_planner_detail_mode():
     assert unreach2["mde"] is None and unreach2["achieved_power"] is None
 
 
+def test_query_audit_trail():
+    """检索词序列必须留痕: 只留最终 verdict 无法回答"这个结论是怎么来的"。"""
+    # 一次判定就定案: 只有首轮 query
+    r_ok = ce.verify_world(_claim("A核心事实", "A", "core", "qA"), mock_llm, mock_search)
+    assert r_ok["queries"] == ["qA"] and "corroboration_verdict" not in r_ok
+    # insufficient 触发重构: 记录首轮与重构后的词
+    r_retry = ce.verify_world(_claim("D需重试的事实", "D", "supporting", "qD"),
+                              mock_llm, mock_search, max_retries=1)
+    assert r_retry["queries"] == ["qD", "reformed"], "重构后的检索词必须可见"
+    assert r_retry["retries"] == 1
+    # 复核: 追加复核词, 且复核轮的原始判定单独留痕
+    r_corr = ce.verify_world(_claim("S单源矛盾", "S", "core", "qS"),
+                             mock_llm, mock_search, corroborate=True)
+    assert r_corr["queries"] == ["qS", "corr-q"]
+    assert r_corr["corroboration_verdict"] == "supported", \
+        "复核轮判了supported才导致降级, 这个原始判定不该只体现在文字里"
+    assert r_corr["verdict"] == "insufficient" and r_corr["corroborated"] is False
+    # 两轮都矛盾: 复核判定同样留痕
+    r_conf = ce.verify_world(_claim("B植入错误", "B错", "detail", "qB"),
+                             mock_llm, mock_search, corroborate=True)
+    assert r_conf["corroboration_verdict"] == "contradicted" and r_conf["corroborated"] is True
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

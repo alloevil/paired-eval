@@ -166,9 +166,13 @@ def verify_world(claim, llm, search, max_retries=1, corroborate=False):
     复核不一致降级为 insufficient 并标 corroborated=False(来源冲突,不是无证据)。
     实测权衡(同一门禁 fixture): False -> recall 2/2, 单源即定罪, 会冤判口径分散的数字;
     True -> recall 1/2, 营收类数字二次检索无法独立确认而降级。故按用途选:
-    生产打分要查准用 True; 门禁自检要查全用 False(selfcheck 默认即 False)。"""
+    生产打分要查准用 True; 门禁自检要查全用 False(selfcheck 默认即 False)。
+    审计留痕: queries 记录实际发出的每个检索词(首轮/重构/复核), corroboration_verdict
+    记录复核轮的原始判定 —— 只留最终 verdict 无法回答"这个结论是怎么来的"。"""
     query = claim["search_query"]
+    queries = []          # 实际发出的检索词序列: 没有它就无法复现一条判定是怎么来的
     for attempt in range(max_retries + 1):
+        queries.append(query)
         evidence = str(search(query))[:EVIDENCE_CAP]
         verdict = _safe_verdict(llm(
             f"claim: {claim['text']}\n\n检索证据:\n{evidence}",
@@ -179,16 +183,18 @@ def verify_world(claim, llm, search, max_retries=1, corroborate=False):
         out = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
                   REFORMULATE_SYSTEM, REFORMULATE_SCHEMA)
         query = (out.get("query") if isinstance(out, dict) else None) or query
-    result = {**claim, **verdict, "retries": attempt}
+    result = {**claim, **verdict, "retries": attempt, "queries": queries}
     if corroborate and verdict["verdict"] == "contradicted":
         out2 = llm(f"claim: {claim['text']}\n上次搜索词: {query}",
                    CORROBORATE_SYSTEM, REFORMULATE_SCHEMA)
         q2 = (out2.get("query") if isinstance(out2, dict) else None) or query
+        queries.append(q2)
         ev2 = str(search(q2))[:EVIDENCE_CAP]
         v2 = _safe_verdict(llm(f"claim: {claim['text']}\n\n检索证据:\n{ev2}",
                                JUDGE_WORLD_SYSTEM, JUDGE_WORLD_SCHEMA),
                            {"supported", "contradicted", "insufficient"},
                            fallback="insufficient")
+        result["corroboration_verdict"] = v2["verdict"]   # 复核轮的原始判定,不只是最终降级结果
         if v2["verdict"] == "contradicted":
             result["corroborated"] = True
         else:

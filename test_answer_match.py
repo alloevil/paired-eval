@@ -96,6 +96,19 @@ def test_match_set_dedup():
     assert r3["precision"] == 0.5
 
 
+
+
+def test_tolerance_inclusive_boundary():
+    """差值恰好等于容差时必须算通过(<= 语义)。此前用例都远离边界,
+    系统化变异把 <= 改成 < 后存活。"""
+    # |100-99| = 1 恰好等于 rel_tol(0.01) * max(100,99) = 1.0
+    assert am.match_numeric("99", "100", rel_tol=0.01), "恰好等于容差应通过"
+    assert not am.match_numeric("98.9", "100", rel_tol=0.01), "略超容差应失败"
+    # abs_tol 边界同样是闭区间
+    assert am.match_numeric("5", "7", rel_tol=0.0, abs_tol=2.0)
+    assert not am.match_numeric("5", "7.001", rel_tol=0.0, abs_tol=2.0)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

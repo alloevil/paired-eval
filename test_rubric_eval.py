@@ -107,6 +107,27 @@ def test_judged_weight_share():
     assert m3["score"] is None and m3["judged_weight_share"] == 0.0
 
 
+
+
+def test_canary_with_unjudgeable_fooling():
+    """糊弄回答本身不可判定(全弃权 -> score=None)时, 分离度应按 0 计而非崩溃。
+    此前无用例覆盖这条路径, 系统化变异把 (bs or 0.0) 改成 and 后存活。"""
+    def llm(prompt, system, schema):
+        # 好回答可判, 糊弄回答一律弃权
+        return {"verdict": "met" if "好回答" in prompt else "abstain", "reasoning": "r"}
+
+    crit = [{"text": "条A", "weight": 1}]
+    c = re_.rubric_canary(crit, "好回答内容", "无法判定的糊弄内容", llm)
+    assert c["good_score"] == 1.0 and c["fooling_score"] is None
+    assert c["separation"] == 1.0, "None 按 0 计, 分离度仍可算"
+    assert c["passed"] is True
+    # 反向: 好回答不可判定 -> 不许上线(已有断言, 此处确认两侧None也不崩)
+    all_abstain = lambda p, s, sch: {"verdict": "abstain", "reasoning": "r"}
+    c2 = re_.rubric_canary(crit, "好回答内容", "糊弄内容", all_abstain)
+    assert c2["good_score"] is None and c2["fooling_score"] is None
+    assert c2["separation"] == 0.0 and c2["passed"] is False
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

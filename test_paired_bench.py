@@ -866,6 +866,44 @@ def test_report_completeness_and_fallbacks():
         "单元数为0时必须如实判为无信息的null, 而不是猜一个数"
 
 
+
+
+def _cell(rate, n=3, k=4):
+    """构造一个逐题报告: 每题成功率为 rate(取 0/中/1 三档)。"""
+    hits = round(rate * n)
+    runs = [True] * hits + [False] * (n - hits)
+    return [{"id": f"t{i}", "n": n, "successes": hits, "runs": list(runs),
+             "pass_at_1": hits / n, "pass_hat_k": 1.0 if hits == n else 0.0}
+            for i in range(k)]
+
+
+def test_report_flags_ceiling_and_floor():
+    """触顶/触底必须自动报出并声明交互项不可解释 —— 第113轮的 2x2 里三个格子
+    都是 1.000, 交互项 -0.667 无法与天花板假象区分, 而当时的报告没提这件事。"""
+    # 复刻实测格局: 一格 0.333, 三格触顶
+    rp = pb.report({"bare-single": _cell(1 / 3), "bare-check": _cell(1.0),
+                    "strict-single": _cell(1.0), "strict-check": _cell(1.0)},
+                   require_interleaved=False)
+    assert rp["ceiling"]["at_top"] == ["bare-check", "strict-check", "strict-single"]
+    assert rp["ceiling"]["at_bottom"] == []
+    assert "触顶(1.000)" in rp["text"] and "交互项都不可解释" in rp["text"]
+    assert "触底" not in rp["text"], "没有触底系统时不该出现该行"
+    # 单个系统触顶: 措辞不同 —— 不是"之间不可解释", 而是"作为参照时效应被压缩"
+    one = pb.report({"a": _cell(1.0), "b": _cell(1 / 3)}, require_interleaved=False)
+    assert one["ceiling"]["at_top"] == ["a"]
+    assert "作为参照时效应会被压缩" in one["text"]
+    assert "交互项都不可解释" not in one["text"]
+    # 触底也要报
+    flo = pb.report({"a": _cell(0.0), "b": _cell(0.0), "c": _cell(2 / 3)},
+                    require_interleaved=False)
+    assert flo["ceiling"]["at_bottom"] == ["a", "b"] and flo["ceiling"]["at_top"] == []
+    assert "触底(0.000)" in flo["text"] and "交互项都不可解释" in flo["text"]
+    # 全在中段: 两行都不出现
+    mid = pb.report({"a": _cell(1 / 3), "b": _cell(2 / 3)}, require_interleaved=False)
+    assert mid["ceiling"] == {"at_top": [], "at_bottom": []}
+    assert "触顶" not in mid["text"] and "触底" not in mid["text"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

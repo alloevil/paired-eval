@@ -100,8 +100,20 @@ harness x agent 的 2x2(同一批题、同一次交错运行, 3 轮):
   结论: 两个因子是替代品而非互补品 —— 它们修的是同一批失败(裸指令下模型加解释性
   文字), 任一到位即够, 两者都做是浪费。这是本仓库唯一一次测出强负交互, 也解释了
   为什么第106轮的 harness 主效应那么大: 它填的是同一个坑。
-  实践含义: "换脚手架"与"加自检"应视为二选一的成本决策(自检要多一次调用, 脚手架
-  只多一段前缀 -> 同等收益下选脚手架), 而不是叠加使用的两项改进。
+  自我纠正(第114轮): 上面的交互项 -0.667 有天花板成分, 必须拆成两半读 ——
+    可测的一半(结论成立): bare-check 达到 1.000, 与 strict-single 在 12 个单元上
+      零不一致对完全并驾。若自检只修部分失败, bare-check 会落在 strict-single 之下。
+      故"自检单独就补齐了脚手架的全部收益"是有据的。
+    不可测的一半(不能声称): strict-check 是否优于 strict-single —— 后者已在 1.000,
+      无余量可加, 该格差异恒为 0 是设计所致而非发现。
+    补救尝试失败: 另造 6 道更硬的题(JSON键序+转义、词长阶梯、YAML质数、隔位大写反转、
+      恰好15字符、字母计数降序)在严格脚手架下全部 2/2 —— 第五次筛不出余量, 与第104轮
+      的模型维度披露同因: 本任务族对该模型太易。要测这半个交互需换任务族。
+  实践含义(据可测的那一半): "换脚手架"与"加自检"在此任务族上收益等同, 是二选一的
+  成本决策(自检要多一次模型调用, 脚手架只多一段前缀 -> 同等收益下选脚手架);
+  但"两者叠加无额外收益"未经证实, 不要据此拒绝叠加。
+机械化(第114轮): report() 现在自动报出触顶/触底系统, 并声明"这些系统之间的 null 与
+  任何交互项都不可解释"。上轮的报告没提天花板 —— 靠人记得, 就会有忘的时候。
 
 2x2 因子设计终报(第106轮, 把两个因子放到同一把尺子上): 4 道敏感题 x 4 轮, 交错+轮转
               strict        bare
@@ -683,14 +695,26 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
     reports: run_interleaved 的 reports(也接受任何同构的 {name: 逐题报告})。
     每对给出: 效应量+CI、逐题置换检验、逐轮 McNemar、Holm 校正、不一致对分布与
     集中度(单题异常 vs 跨题复现)、以及 null 分支的可排除范围(claim_eval.interpret)。
-    另给全局: 有效样本(饱和诊断)与拒答归属(若传入 run_interleaved 的顶层结果)。
-    返回 {"pairs": [...], "saturation": {...}, "text": str}。"""
+    另给全局: 有效样本(饱和诊断)、拒答归属、以及触顶/触底系统的清单 —— 后者是第114轮
+    踩到的坑: 2x2 里三个格子都是 1.000 时, 交互项 -0.667 无法与天花板假象区分。
+    返回 {"pairs","saturation","ceiling","text"}; ceiling={"at_top":[...],"at_bottom":[...]}。"""
     sat = saturation(reports, **kw)
     rows = pairwise_compare(reports, **kw)
+    rates = {nm: (sum(x["successes"] for x in v) / n if (n := sum(x["n"] for x in v)) else None)
+             for nm, v in reports.items()}
+    ceiling = {"at_top": sorted(nm for nm, r in rates.items() if r == 1.0),
+               "at_bottom": sorted(nm for nm, r in rates.items() if r == 0.0)}
     lines = [f"有效样本: {sat['informative']}/{sat['n_tasks']} 题有信息"
              f"(恒过 {sat['saturated_pass']}, 恒败 {sat['saturated_fail']})"]
     if refusals:
         lines.append(f"拒答: {refusals}")
+    for edge, where in (("at_top", "触顶(1.000)"), ("at_bottom", "触底(0.000)")):
+        names = ceiling[edge]
+        if not names:
+            continue
+        warn = (" —— 这些系统之间的 null 与任何交互项都不可解释: 无余量可加/可减"
+                if len(names) > 1 else " —— 该系统无余量, 它作为参照时效应会被压缩")
+        lines.append(f"{where}: {', '.join(names)}{warn}")
     pairs = []
     for r in rows:
         # 逐轮 McNemar 是主检验(保留重复结构), 故 null 界按逐轮单元数算。
@@ -707,4 +731,5 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
             f"CI95=[{r['diff_ci'][0]:+.3f},{r['diff_ci'][1]:+.3f}] | "
             f"逐题p={r['p_perm']:.3f} 逐轮McNemar={r['mcnemar_p']:.5f} Holm={r['p_mcnemar_holm']:.5f} | "
             f"不一致对 {r['a_only']}:{r['b_only']} 集中度={conc} | {verdict['text']}")
-    return {"pairs": pairs, "saturation": sat, "text": "\n".join(lines)}
+    return {"pairs": pairs, "saturation": sat, "ceiling": ceiling,
+            "text": "\n".join(lines)}

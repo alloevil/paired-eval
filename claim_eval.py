@@ -21,6 +21,7 @@
     holm_adjust(pvalues)                  # 多重比较: Holm-Bonferroni 控制 FWER
     interpret(compare, n_units)           # 结论翻译: null 强制附可排除范围
     p_floor(n) / min_units_for_alpha(a)   # 检验的 p 地板与所需最小单元数
+    required_pairs(mean_diff, sd)          # 连续分数配对设计的样本量规划
 适配:
     Meter / make_resilient / throttled_pmap   # 成本计量 / 有界重试 / 限并发
 """
@@ -429,6 +430,59 @@ def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, s
         n = max(n + 4, int(n * 1.4))
     return {"n": None, "achieved_power": None, "power_target": power,
             "alpha": alpha} if detail else None
+
+
+def required_pairs(mean_diff, sd, alpha=0.05, power=0.8, sims=200, resamples=2000,
+                   n_max=512, seed=0, detail=False, gauss=None):
+    """连续分数配对设计的样本量规划 —— required_tasks 的连续版本。
+
+    为什么需要单独一支: required_tasks 只服务二值胜率(McNemar), 而 rubric/grounding
+    这类打分是连续的, 检验走符号翻转置换。第116轮规划这类设计时只能手算
+    (1.96*sd/Δ)^2 —— 那是"CI 恰好排除 0"的公式, 实测功效仅 0.45, 与实际使用的置换
+    检验不是同一把尺子; 正确的功效公式 ((z_a/2 + z_power)*sd/Δ)^2 大 2.04 倍。
+
+    遵循本模块既定原则: 规划器内部跑的就是 paired_compare, 而非闭式近似。代价是慢
+    (每个候选 n 要跑 sims 次置换检验), 故 sims/resamples 默认比检验时小 —— 规划只需
+    知道"大概多少", 精度余量由 detail 里的 achieved_power 交代。
+
+    两个约束取较大者(这是第119/120轮教训的直接落地):
+      1. 功效: 差值分布为 N(mean_diff, sd) 时, 检验能以 power 的概率给出 p < alpha
+      2. p 地板: p_floor(n) < alpha —— 否则再大的效应也拿不到显著
+    若 sd 为 0(差值恒定), 功效约束由地板单独决定。
+    gauss 可注入确定性正态采样器(签名 gauss(mu, sigma)), 用于测试边界。
+    detail=True 时返回 {"n","achieved_power","power_target","alpha","floor_n"}。"""
+    if mean_diff == 0:
+        raise ValueError("mean_diff 为 0 时无效应可检出")
+    if sd < 0:
+        raise ValueError(f"sd 不能为负: {sd}")
+    floor_n = min_units_for_alpha(alpha, resamples)
+    if sd == 0:
+        # 差值恒定: 每对同号, 置换检验的 p 恒等于地板, 故样本量只由地板决定
+        return {"n": floor_n, "achieved_power": 1.0, "power_target": power,
+                "alpha": alpha, "floor_n": floor_n} if detail else floor_n
+    g = gauss or random.Random(seed).gauss
+
+    def power_at(n):
+        hits = 0
+        for i in range(sims):
+            diffs = [g(mean_diff, sd) for _ in range(n)]
+            # 每次 sim 换重采样种子: 复用同一个会让所有置换检验用完全相同的符号翻转
+            # 模式, 各次 p 值高度相关, 功效估计随之偏斜(第121轮自查发现)。
+            c = paired_compare(diffs, [0.0] * n, n_resamples=resamples, seed=seed + i)
+            if c["p_value"] < alpha:
+                hits += 1
+        return hits / sims
+
+    n = floor_n
+    while n <= n_max:
+        achieved = power_at(n)
+        if achieved >= power:
+            return {"n": n, "achieved_power": achieved, "power_target": power,
+                    "alpha": alpha, "floor_n": floor_n} if detail else n
+        n = max(n + 2, int(n * 1.15))   # 步长比 required_tasks 细: 连续分数的功效曲线
+        # 平缓, 1.4 倍跳会在临界点附近超调很多(实测 42 已达 0.83 却被跳到 54)
+    return {"n": None, "achieved_power": None, "power_target": power,
+            "alpha": alpha, "floor_n": floor_n} if detail else None
 
 
 def detectable_effect(n, p_loss=0.0, alpha=0.05, power=0.8, sims=400, seed=0, step=0.01,

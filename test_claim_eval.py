@@ -1113,6 +1113,110 @@ def test_interpret_basis_priority_and_wording():
     assert v5["verdict"] == "null" and "检验无力" in v5["text"]
 
 
+
+
+def test_required_pairs_contracts():
+    """连续分数样本量规划的契约。用注入的确定性 gauss 钉死边界, 不靠"统计上大概对"
+    —— 与 required_tasks/detectable_effect 同一套做法(第87轮起的约定)。"""
+    # 差值恒定(sd=0): 每对同号, 置换 p 恒等于地板, 故样本量只由地板决定
+    d = ce.required_pairs(0.1, 0.0, detail=True)
+    assert d["n"] == d["floor_n"] == ce.min_units_for_alpha(0.05, 2000)
+    assert d["achieved_power"] == 1.0
+    assert ce.required_pairs(0.1, 0.0) == d["n"], "非 detail 应返回同一个 n"
+    # 起点不得低于 p 地板 —— 否则规划出的设计再大效应也拿不到显著
+    always = ce.required_pairs(1.0, 0.001, sims=3, resamples=400, gauss=lambda mu, s: mu, detail=True)
+    assert always["n"] >= always["floor_n"] >= 6, always
+    # alpha 更严 -> 地板更高 -> 起点更高
+    strict = ce.required_pairs(1.0, 0.001, alpha=0.01, sims=3, resamples=400,
+                               gauss=lambda mu, s: mu, detail=True)
+    assert strict["floor_n"] > always["floor_n"], (strict, always)
+    # 效应过小时返回 None(而非无限搜索), detail 版仍带 floor_n 供诊断
+    zero = lambda mu, s: 0.0        # 差值恒为 0 -> 永远检不出
+    none_d = ce.required_pairs(0.001, 1.0, n_max=16, sims=4, resamples=200,
+                               gauss=zero, detail=True)
+    assert none_d["n"] is None and none_d["achieved_power"] is None
+    assert none_d["floor_n"] == 6, "失败时也要交代地板, 否则调用者不知从何起算"
+    assert ce.required_pairs(0.001, 1.0, n_max=16, sims=4, resamples=200,
+                             gauss=zero) is None
+    # 输入契约
+    for bad_md, bad_sd in ((0, 0.2), (0.0, 1.0)):
+        try:
+            ce.required_pairs(bad_md, bad_sd)
+            raise AssertionError("mean_diff=0 应报错")
+        except ValueError as e:
+            assert "无效应" in str(e), str(e)
+    try:
+        ce.required_pairs(0.1, -0.1)
+        raise AssertionError("sd<0 应报错")
+    except ValueError as e:
+        assert "sd 不能为负" in str(e), str(e)
+    # 单调性: 效应越小需要越多对(同 sd)。用注入的确定性采样器 —— 真跑蒙特卡洛要 15 秒,
+    # 会把 pre-commit 依赖的 2 秒快速套件拖垮(第121轮实测)。慢的那份留给下一个测试。
+    det = lambda mu, s: mu          # 差值恒为 mu: 功效由地板与效应符号决定
+    big = ce.required_pairs(0.5, 0.3, sims=6, resamples=400, gauss=det)
+    small = ce.required_pairs(0.05, 0.3, sims=6, resamples=400, gauss=det)
+    assert big is not None and small is not None and big <= small, (big, small)
+
+
+def calibrate_required_pairs_against_formula():
+    """规划器必须与教科书功效公式同量级 —— 偏离一倍以上说明实现有错。
+
+    刻意不叫 test_*: 真跑蒙特卡洛要 4~5 秒, 会把 pre-commit 依赖的 2 秒快速套件拖慢
+    一倍以上。由 checkall.sh 的慢层调用(与 check_hooks.py 同层理由)。
+    第121轮的教训正藏在这里: 手算 (1.96*sd/Δ)^2 答的是"CI 恰好排除 0"(实测功效仅
+    0.45), 而功效公式是 ((z_a/2 + z_power)*sd/Δ)^2, 两者差 2.04 倍。"""
+    for md, sd in ((0.122, 0.264), (0.3, 0.3)):
+        formula = ((1.96 + 0.8416) * sd / md) ** 2
+        got = ce.required_pairs(md, sd, sims=80, resamples=1000)
+        assert got is not None
+        assert 0.7 * formula <= got <= 2.0 * formula, \
+            f"Δ={md} sd={sd}: 公式 {formula:.0f} vs 规划器 {got} —— 偏离过大"
+        # 关键: 必须明显大于"CI 排除 0"的那个数(它只有约一半功效)
+        assert got > (1.96 * sd / md) ** 2, "规划器不得退化成 CI 半宽公式"
+
+
+
+
+def test_required_pairs_grid_and_counting_boundaries():
+    """变异测试在 required_pairs 上抓到 8 个缺口, 7 个可精确钉死(第 8 个是 p 恰等于 alpha,
+    属已知等价类"实践中不可达")。全部用注入的确定性采样器 —— 采样器按调用序号分段,
+    就能精确控制"哪几次 sim 通过", 从而把功效算到小数点后一位。"""
+    R = 200                                            # 重采样数: 地板 min_units=6
+    # 1 达标比较是 >=: 恰好 80% 的 sim 通过时必须在该 n 返回, 且 achieved_power 精确为 0.8
+    calls = {"i": 0}
+
+    def four_of_five(mu, s):
+        k = calls["i"] // 6                            # n=6 时每 6 次调用是一个 sim
+        calls["i"] += 1
+        return mu if k % 5 != 4 else 0.0               # 第 5 个 sim 差值全零 -> p=1 -> 不过
+
+    d = ce.required_pairs(1.0, 0.1, sims=5, resamples=R, gauss=four_of_five, detail=True)
+    assert d["n"] == 6 and d["achieved_power"] == 0.8, d
+    # 2 计数: 全过时 achieved_power 必须恰为 1.0(初值 0、每次 +1 —— 改成 1 或 +2 都会超过 1)
+    d2 = ce.required_pairs(1.0, 0.1, sims=3, resamples=R, gauss=lambda mu, s: mu, detail=True)
+    assert d2["achieved_power"] == 1.0 and d2["n"] == 6, d2
+    # 3 计数初值: 永不通过且只有 1 个 sim 时, 功效必须是 0 而非 1/1 —— 否则返回 6 而非 None
+    assert ce.required_pairs(1.0, 0.1, sims=1, resamples=R, n_max=16,
+                             gauss=lambda mu, s: 0.0) is None
+    # 4 搜索上界是 <=: n_max 恰等于地板时仍要评估该点, 不得直接返回 None
+    assert ce.required_pairs(1.0, 0.1, sims=2, resamples=R, n_max=6,
+                             gauss=lambda mu, s: mu) == 6
+    # 5 网格步长: 地板 6 之后的下一个点是 max(6+2, int(6*1.15)) = 8。
+    #   让前 sims*6 次调用全零(n=6 不过), 之后全通过 -> 返回值就是第二个网格点。
+    cnt = {"i": 0}
+
+    def fail_first_grid(mu, s):
+        cnt["i"] += 1
+        return 0.0 if cnt["i"] <= 3 * 6 else mu
+
+    assert ce.required_pairs(1.0, 0.1, sims=3, resamples=R, gauss=fail_first_grid) == 8, \
+        "第二个网格点应为 8(步长 +2 与 x1.15 取大); 步长改动会让超调加大"
+    # 6 未注入采样器时用 seed 驱动的正态: 不得崩, 且同 seed 结果可复现
+    a = ce.required_pairs(3.0, 0.01, sims=2, resamples=R, n_max=8)
+    b = ce.required_pairs(3.0, 0.01, sims=2, resamples=R, n_max=8)
+    assert a == b == 6, (a, b)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

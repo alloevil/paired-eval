@@ -8,9 +8,13 @@
 import ast
 import json
 import pathlib
+import subprocess
+import sys
 import tempfile
 
 import mutate_auto as ma
+
+ROOT = pathlib.Path(__file__).resolve().parent
 
 SRC = '''
 LIMIT = 100
@@ -148,6 +152,102 @@ def test_missing_baseline_fails_check():
         assert not ma.BASELINE.exists()
         assert ma.check_against_baseline([("a.py", "f#0: X", False)]) == 1
     _with_temp_baseline(body)
+
+
+
+
+def _with_temp_root(fn):
+    """把 ma.ROOT 指到临时目录: 备份/还原逻辑只碰文件系统, 不需要真仓库。"""
+    orig = ma.ROOT
+    with tempfile.TemporaryDirectory() as d:
+        ma.ROOT = pathlib.Path(d)
+        try:
+            return fn(ma.ROOT)
+        finally:
+            ma.ROOT = orig
+
+
+def test_stale_backup_is_restored_on_startup():
+    """模拟 SIGKILL 现场: 源文件停在变异状态, 旁路备份仍在 -> 下次启动必须自动还原。
+    第121轮真实踩到: 扫描被取消后 claim_eval.py 被 unparse 且带一个活变异, 快速套件
+    因此变红, 而未提交的改动随 git checkout 一起丢失, 只能凭记忆重放。"""
+    def body(root):
+        src = root / "mod.py"
+        good = "# 注释会被 unparse 抹掉, 用它当原件特征\nx = 1\n"
+        src.write_text("x = 2\n", encoding="utf-8")                # 变异后的样子
+        ma._backup_of(src).write_text(good, encoding="utf-8")     # 中断前落盘的原件
+        # 无关文件不得被误当备份
+        (root / "other.txt.mutate_backup_not").write_text("zzz", encoding="utf-8")
+        restored = ma.restore_stale_backups()
+        assert restored == ["mod.py"], restored
+        assert src.read_text(encoding="utf-8") == good, "源文件必须回到原件"
+        assert not ma._backup_of(src).exists(), "还原后备份要删掉, 否则下次又报一次"
+        # 幂等: 没有备份时什么都不做
+        assert ma.restore_stale_backups() == []
+    _with_temp_root(body)
+
+
+def test_backup_written_before_source_is_touched_and_removed_after():
+    """备份必须在第一次改写源文件之前落盘(否则崩在 unparse 对照阶段就没救),
+    正常结束后必须删掉(否则 git add -A 会把它提交进去, 且下次误报"发现遗留")。
+    用一个 unparse 对照即失败的模块走"跳过"出口 —— 三条出口里最容易漏清理的一条。"""
+    def body(root):
+        src = root / "m.py"
+        original = "def f():\n    return 1\n"
+        src.write_text(original, encoding="utf-8")
+        seen = {"backup_at_first_write": None}
+        real_passes = ma.suite_passes
+
+        def fake_passes():
+            # 第一次跑套件时源文件已被 unparse: 此刻备份必须已经存在且内容是原件
+            if seen["backup_at_first_write"] is None:
+                bk = ma._backup_of(src)
+                seen["backup_at_first_write"] = (bk.exists()
+                                                 and bk.read_text(encoding="utf-8") == original)
+            return False   # 空变异对照失败 -> 走"跳过"出口
+
+        ma.suite_passes = fake_passes
+        try:
+            res = ma.run(["m.py"])
+        finally:
+            ma.suite_passes = real_passes
+        assert res == [], "对照失败的模块不产出结果"
+        assert seen["backup_at_first_write"] is True, "备份必须先于第一次改写源文件"
+        assert src.read_text(encoding="utf-8") == original, "源文件已还原"
+        assert not ma._backup_of(src).exists(), "跳过出口也必须删备份"
+    _with_temp_root(body)
+
+
+def test_backup_survives_hard_kill_and_next_run_heals():
+    """端到端: 子进程在变异写入后被 SIGKILL, 源文件停在变异状态; 再跑一次 run()
+    必须先还原再开始。用真实子进程而非模拟, 因为 finally 不执行正是要验证的事。"""
+    def body(root):
+        src = root / "m.py"
+        original = "def f():\n    return 1\n"
+        src.write_text(original, encoding="utf-8")
+        # 子进程: 装好备份, 改写源文件, 然后自杀(SIGKILL) —— finally 无机会执行
+        script = (
+            "import os, signal, pathlib, sys\n"
+            f"sys.path.insert(0, {str(ROOT)!r})\n"
+            "import mutate_auto as ma\n"
+            f"ma.ROOT = pathlib.Path({str(root)!r})\n"
+            "src = ma.ROOT / 'm.py'\n"
+            "ma._backup_of(src).write_text(src.read_text(encoding='utf-8'), encoding='utf-8')\n"
+            "try:\n"
+            "    src.write_text('def f():\\n    return 2\\n', encoding='utf-8')\n"
+            "    os.kill(os.getpid(), signal.SIGKILL)\n"
+            "finally:\n"
+            "    src.write_text('SHOULD-NOT-RUN', encoding='utf-8')\n"
+        )
+        r = subprocess.run([sys.executable, "-B", "-c", script], capture_output=True, text=True)
+        assert r.returncode == -9, f"子进程应死于 SIGKILL: rc={r.returncode} {r.stderr[-200:]}"
+        assert src.read_text(encoding="utf-8") == "def f():\n    return 2\n", \
+            "SIGKILL 后源文件应停在变异状态, finally 未执行"
+        assert ma._backup_of(src).exists()
+        # 下一次启动自愈
+        assert ma.restore_stale_backups() == ["m.py"]
+        assert src.read_text(encoding="utf-8") == original
+    _with_temp_root(body)
 
 
 if __name__ == "__main__":

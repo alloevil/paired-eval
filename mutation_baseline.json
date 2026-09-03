@@ -17,6 +17,7 @@
   "claim_eval.py|p_floor#0: const 64->65",
   "claim_eval.py|p_floor#1: Lt->LtE",
   "claim_eval.py|paired_compare#0: GtE->Gt",
+  "claim_eval.py|required_pairs.power_at#0: Lt->LtE",
   "claim_eval.py|required_tasks#0: const 1->2",
   "claim_eval.py|required_tasks.power_at#2: Lt->LtE",
   "claim_eval.py|verify_world#0: const 1->2",

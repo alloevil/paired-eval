@@ -29,7 +29,9 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
   被后续条件掩盖    range(max_retries+1) 的上界被 `attempt == max_retries` 的 break 支配
   死初始化          adjusted = [0.0]*n 每个位置随后都被覆盖
   零守卫的等价分支  `n = len(results) or 1` 里 1 换成 2: 分子为 0, 商仍为 0
-  实践中不可达      p 值恰好等于 alpha、浮点恰好等于 mean_diff-1e-12、
+  实践中不可达      p 值恰好等于 alpha(paired_compare 与 required_pairs.power_at 各一处:
+                    p=(k+1)/(resamples+1) 要恰等于 0.05 需 resamples+1 是 20 的倍数且
+                    极端计数正好落在那个 k 上)、浮点恰好等于 mean_diff-1e-12、
                     p_win<=2 被 `p_win+p_loss>1` 的检查支配
   蒙特卡洛计数微调  reproduce_findings 的 sims=200->201: 两者都给 required_tasks=81,
                     对输出不可观测(把 sims 钉死等于禁止将来调精度)
@@ -193,69 +195,103 @@ def changed_lines(mod, since="HEAD"):
     return lines
 
 
+BACKUP_SUFFIX = ".mutate_backup"
+
+
+def _backup_of(path):
+    return path.with_name(path.name + BACKUP_SUFFIX)
+
+
+def restore_stale_backups():
+    """启动时先做这件事: 若上次运行被 SIGKILL 打断(工具层超时、用户取消都走这条路),
+    try/finally 根本来不及执行, 源文件会停在变异状态而旁路备份还在磁盘上。
+    第121轮真实踩到: 扫描被取消后 claim_eval.py 只剩 0 行注释(被 unparse)且带一个活
+    变异, 快速套件因此变红; 而当时唯一的"备份"是 git HEAD —— 未提交的改动随 checkout
+    一起丢, 只能凭记忆重放。有了旁路文件, 下一次任何调用都会先自动还原。
+    必须在读取 original 之前调用: 否则会把变异后的文件当成原件备份, 错误就此固化。
+    返回已还原的模块名列表。"""
+    restored = []
+    for bk in sorted(ROOT.glob(f"*.py{BACKUP_SUFFIX}")):
+        src = bk.with_name(bk.name[: -len(BACKUP_SUFFIX)])
+        src.write_text(bk.read_text(encoding="utf-8"), encoding="utf-8")
+        bk.unlink()
+        restored.append(src.name)
+        print(f"!! 发现上次中断遗留的备份, 已还原 {src.name}(它此前停在变异状态)")
+    return restored
+
+
 def run(modules, limit=None, seed=0, since=None):
-    """全程 try/finally 保护: 变异会真的改写源文件, 中断(Ctrl-C/超时/异常)若不还原,
-    仓库会停在被变异的状态 —— 本工具第一次全量运行就因工具层超时踩到过,
-    留下一个被 unparse 的 paired_bench.py, 而后续运行的"空变异对照"如实报告了不可信。
+    """全程 try/finally 保护 + 磁盘旁路备份: 变异会真的改写源文件, 中断若不还原, 仓库会
+    停在被变异的状态 —— 本工具第一次全量运行就因工具层超时踩到过, 留下一个被 unparse
+    的 paired_bench.py, 而后续运行的"空变异对照"如实报告了不可信。
+    finally 挡得住 Ctrl-C 与异常, 挡不住 SIGKILL; 旁路备份(见 restore_stale_backups)
+    补上这一段: 第一次改写源文件之前先把原件落盘, 正常结束时删掉。
     since 非空时只变异该 git ref 以来改动过的行(未改动的模块整个跳过)。"""
+    restore_stale_backups()
     results = []
     for mod in modules:
         path = ROOT / mod
         original = path.read_text(encoding="utf-8")
+        bk = _backup_of(path)
+        bk.write_text(original, encoding="utf-8")   # 先落盘, 再碰源文件
         try:
-            tree = ast.parse(original)
-            # 对照: 空变异(仅 unparse)必须仍然全绿
-            path.write_text(ast.unparse(tree), encoding="utf-8")
-            baseline_ok = suite_passes()
-        finally:
-            path.write_text(original, encoding="utf-8")
-        if not baseline_ok:
-            print(f"!! {mod}: unparse 空变异即失败, 该模块的变异结果不可信(跳过)")
-            continue
-        tree_c = ast.parse(original)          # skip_ids 依赖节点对象同一性: 必须同一棵树
-        total = count_points(tree_c, _noise_constants(tree_c))
-        idxs = list(range(total))
-        scope = ""
-        if since is not None:
-            touched = changed_lines(mod, since)
-            if not touched:
-                continue                      # 该模块未改动
-            keep = []
-            for i in idxs:
-                probe_tree = ast.parse(original)   # 与 skip 集同一棵树: 否则索引空间错位,
-                probe = _Mutator(i, _noise_constants(probe_tree),      # 会变异到别的点上
-                                 _scopes(probe_tree))
-                probe.visit(probe_tree)
-                if probe.applied and probe.hit_line in touched:
-                    keep.append(i)
-            idxs = keep
-            scope = f", 限定 {since} 以来改动的 {len(touched)} 行"
-            if not idxs:
-                print(f"== {mod}: 改动行内无可变异点{scope}")
+            try:
+                tree = ast.parse(original)
+                # 对照: 空变异(仅 unparse)必须仍然全绿
+                path.write_text(ast.unparse(tree), encoding="utf-8")
+                baseline_ok = suite_passes()
+            finally:
+                path.write_text(original, encoding="utf-8")
+            if not baseline_ok:
+                print(f"!! {mod}: unparse 空变异即失败, 该模块的变异结果不可信(跳过)")
                 continue
-        if limit and limit < len(idxs):
-            idxs = sorted(random.Random(seed).sample(idxs, limit))
-        print(f"== {mod}: {total} 个可变异点(已滤除默认参数/切片长度等已知等价类), "
-              f"本次跑 {len(idxs)} 个{scope} (unparse 对照通过)")
-        try:
-            for i in idxs:
-                tree_i = ast.parse(original)
-                mut = _Mutator(i, _noise_constants(tree_i), _scopes(tree_i))
-                new_tree = mut.visit(tree_i)
-                if mut.applied is None:
+            tree_c = ast.parse(original)          # skip_ids 依赖节点对象同一性: 必须同一棵树
+            total = count_points(tree_c, _noise_constants(tree_c))
+            idxs = list(range(total))
+            scope = ""
+            if since is not None:
+                touched = changed_lines(mod, since)
+                if not touched:
+                    continue                      # 该模块未改动
+                keep = []
+                for i in idxs:
+                    probe_tree = ast.parse(original)   # 与 skip 集同一棵树: 否则索引空间错位,
+                    probe = _Mutator(i, _noise_constants(probe_tree),      # 会变异到别的点上
+                                     _scopes(probe_tree))
+                    probe.visit(probe_tree)
+                    if probe.applied and probe.hit_line in touched:
+                        keep.append(i)
+                idxs = keep
+                scope = f", 限定 {since} 以来改动的 {len(touched)} 行"
+                if not idxs:
+                    print(f"== {mod}: 改动行内无可变异点{scope}")
                     continue
-                try:
-                    src = ast.unparse(ast.fix_missing_locations(new_tree))
-                except Exception as exc:
-                    print(f"  skip  {mut.applied} (unparse失败: {exc})")
-                    continue
-                path.write_text(src, encoding="utf-8")
-                killed = not suite_passes()
-                results.append((mod, mut.applied, killed))
-                if not killed:
-                    print(f"  SURVIVED  {mod} {mut.applied}")
+            if limit and limit < len(idxs):
+                idxs = sorted(random.Random(seed).sample(idxs, limit))
+            print(f"== {mod}: {total} 个可变异点(已滤除默认参数/切片长度等已知等价类), "
+                  f"本次跑 {len(idxs)} 个{scope} (unparse 对照通过)")
+            try:
+                for i in idxs:
+                    tree_i = ast.parse(original)
+                    mut = _Mutator(i, _noise_constants(tree_i), _scopes(tree_i))
+                    new_tree = mut.visit(tree_i)
+                    if mut.applied is None:
+                        continue
+                    try:
+                        src = ast.unparse(ast.fix_missing_locations(new_tree))
+                    except Exception as exc:
+                        print(f"  skip  {mut.applied} (unparse失败: {exc})")
+                        continue
+                    path.write_text(src, encoding="utf-8")
+                    killed = not suite_passes()
+                    results.append((mod, mut.applied, killed))
+                    if not killed:
+                        print(f"  SURVIVED  {mod} {mut.applied}")
+            finally:
+                path.write_text(original, encoding="utf-8")   # 中断/异常也必须还原
         finally:
-            path.write_text(original, encoding="utf-8")   # 中断/异常也必须还原
+            path.write_text(original, encoding="utf-8")   # 三条出口(正常/跳过/异常)都还原
+            bk.unlink(missing_ok=True)                    # 正常结束才删备份; SIGKILL 会留下它
     killed = sum(1 for _, _, k in results if k)
     print(f"\n杀伤率: {killed}/{len(results)}")
     for mod, desc, k in results:

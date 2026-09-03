@@ -645,3 +645,33 @@ SCAFFOLD_SENSITIVE = ["if-json", "fmt-jsonarr", "fmt-kv", "fmt-yaml"]
 # 共同失败形态: ```json ... ``` 围栏, 或 "形式如下:" 之类前置解释。
 # 规律: 脚手架敏感度来自"多行/结构化输出", 单值答案几乎不敏感 —— 又一次猜测被实测收窄
 # (原以为 8 道格式题都敏感, 实际 3/8)。
+
+
+def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
+    """把一次交错测量整理成完整诚实报告 —— 每一项都曾在手工报告里被漏掉过。
+    reports: run_interleaved 的 reports(也接受任何同构的 {name: 逐题报告})。
+    每对给出: 效应量+CI、逐题置换检验、逐轮 McNemar、Holm 校正、不一致对分布与
+    集中度(单题异常 vs 跨题复现)、以及 null 分支的可排除范围(claim_eval.interpret)。
+    另给全局: 有效样本(饱和诊断)与拒答归属(若传入 run_interleaved 的顶层结果)。
+    返回 {"pairs": [...], "saturation": {...}, "text": str}。"""
+    sat = saturation(reports, **kw)
+    rows = pairwise_compare(reports, **kw)
+    lines = [f"有效样本: {sat['informative']}/{sat['n_tasks']} 题有信息"
+             f"(恒过 {sat['saturated_pass']}, 恒败 {sat['saturated_fail']})"]
+    if refusals:
+        lines.append(f"拒答: {refusals}")
+    pairs = []
+    for r in rows:
+        units = sum(len(x.get("runs", [])) for x in reports[r["a"]]) or r.get("n") or 0
+        # 逐轮 McNemar 是主检验(保留重复结构), 故 null 界按逐轮单元数算
+        fake = {"n": units, "mean_diff": r["mean_diff"], "diff_ci": r["diff_ci"],
+                "p_value": r["p_mcnemar_holm"]}
+        verdict = ce.interpret(fake, n_units=units, alpha=alpha)
+        pairs.append({**r, "units": units, "interpretation": verdict})
+        conc = "n/a" if r["concentration"] is None else f"{r['concentration']:.2f}"
+        lines.append(
+            f"{r['a']} vs {r['b']}: Δ={r['mean_diff']:+.3f} "
+            f"CI95=[{r['diff_ci'][0]:+.3f},{r['diff_ci'][1]:+.3f}] | "
+            f"逐题p={r['p_perm']:.3f} 逐轮McNemar={r['mcnemar_p']:.5f} Holm={r['p_mcnemar_holm']:.5f} | "
+            f"不一致对 {r['a_only']}:{r['b_only']} 集中度={conc} | {verdict['text']}")
+    return {"pairs": pairs, "saturation": sat, "text": "\n".join(lines)}

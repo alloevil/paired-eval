@@ -15,6 +15,7 @@
 import sys
 
 import claim_eval as ce
+import eval_task as et
 import paired_bench as pb
 
 STRICT = "严格按要求输出,不要任何多余内容。要求: "
@@ -27,6 +28,10 @@ EXPECTED = {
     "scaffold_p_max": 0.05,           # 记录值 Holm 后 0.0117
     "informative_min": 2,             # 记录值 4/4 有信息; 少于 2 则样本已失效
     "model_null_bound": 0.10,         # 记录值: 模型效应 <10%(80 单元, MDE 0.10)
+    # 第116轮: 严格提示已到位时自检的增量 Δ=+0.183 CI95=[+0.086,+0.285] p=0.0046
+    "derivation_increment_min": 0.08, # 取记录的 CI 下界: 低于此说明增量已消失
+    "derivation_units_min": 18,       # 按 (1.96*sd/Δ)^2 反算所得; 少于此只能给警告
+    "derivation_ceiling_max": 0.95,   # 参照格触顶则该族失去余量, 交互不可测(须换题)
 }
 
 
@@ -97,8 +102,9 @@ def check_model_null(call_a, call_b, n=4, verbose=True):
     return problems, warnings
 
 
-def main(call=None, call_b=None, n=4):
-    """跑全部复现检查。call: 主模型; call_b: 第二模型(给出才跑 null 复现)。
+def main(call=None, call_b=None, judge=None, n=4, n_deriv=6):
+    """跑全部复现检查。call: 主模型; call_b: 第二模型(给出才跑 null 复现);
+    judge: claim 抽取与 grounding 判定器(给出才跑推算增量复现)。
     退出码 0=全部复现(warnings 不算失败), 1=有结论与记录不符, 2=未注入调用。"""
     if call is None:
         print("!! 需注入模型调用: main(lambda prompt: ...) 或在宿主环境提供 call")
@@ -114,6 +120,13 @@ def main(call=None, call_b=None, n=4):
         warnings += w2
         if not p2:
             passed.append("模型 null" + (" (界更松)" if w2 else ""))
+    if judge is not None:
+        print("\n=== 3 推算增量(记录: 严格提示上自检仍加 +0.183) ===")
+        p3, w3 = check_derivation_increment(call, judge, n=n_deriv)
+        problems += p3
+        warnings += w3
+        if not p3:
+            passed.append("推算增量" + (" (样本不足)" if w3 else ""))
     print()
     for w in warnings:
         print(f"WARN  {w}")
@@ -129,3 +142,69 @@ def main(call=None, call_b=None, n=4):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+TIGHT = "仅依据以下资料回答问题,不得添加资料之外的任何信息。\n"
+RECHECK = ("资料:\n{obs}\n草稿:\n{draft}\n"
+           "逐句检查草稿,删除任何资料中没有直接依据的内容(含跨条目推算、冲突调和、"
+           "把预测当事实)。只输出修正后的最终文本。")
+
+
+def _grade_derivation(case, call, judge, use_check):
+    """跑一道推算题并给出 grounding_rate。use_check=True 时多一遍自检修正。"""
+    body = TIGHT + case["question"] + "\n资料:\n" + "\n".join(case["observations"])
+    text = call(body)
+    if use_check:
+        text = call(RECHECK.format(obs="\n".join(case["observations"]), draft=text))
+    obs = [{"tool_call_id": f"tc_{i}", "tool": "web_search", "observation": o}
+           for i, o in enumerate(case["observations"])]
+    r = et.evaluate({"id": case["id"], "instruction": case["question"],
+                     "verification": {"class": "trajectory",
+                                      "grounding_policy": "must_ground"}},
+                    response=text, observations=obs, llm=judge)
+    return r["score"]
+
+
+def check_derivation_increment(call, judge, n=6, verbose=True):
+    """复现第116轮最关键的那条: 严格提示已到位时, 自检仍有可测增量。
+
+    这条最该被监控 —— 它推翻了第113/114轮的"纯替代"结论, 直接改变了实践建议。
+    三种失败要分开(与 check_model_null 同规矩):
+      problems: 增量消失或方向反转(真漂移); 或参照格触顶(该族失去余量, 须换题)
+      warnings: 单元数不足 18 -> 拿不到显著也不算失败, 但不构成复现
+    返回 (problems, warnings)。judge 需能做 claim 抽取与 grounding 判定。
+    """
+    cases = pb.DERIVATION_CASES
+    assert len(cases) >= 3, f"推算题缩水到 {len(cases)} 道, 无法复现"
+    single, checked = [], []
+    for _ in range(n):
+        for c in cases:
+            single.append(_grade_derivation(c, call, judge, False))
+            checked.append(_grade_derivation(c, call, judge, True))
+    units = len(single)
+    cmp_ = ce.paired_compare(checked, single)
+    verdict = ce.interpret(cmp_, n_units=units)
+    ref = sum(single) / units
+    if verbose:
+        print(f"参照格 tight-single = {ref:.3f} | 自检后 = {sum(checked)/units:.3f}")
+        print(f"增量: {verdict['text']}")
+    problems, warnings = [], []
+    if ref > EXPECTED["derivation_ceiling_max"]:
+        problems.append(f"参照格触顶({ref:.3f} > {EXPECTED['derivation_ceiling_max']}): "
+                        f"该题族已失去余量, 增量无从测量 —— 处方是换题, 不是放宽阈值")
+        return problems, warnings
+    if cmp_["mean_diff"] < 0 and verdict["verdict"] == "significant":
+        problems.append(f"方向反转: 自检反而变差(Δ={cmp_['mean_diff']:+.3f}, "
+                        f"p={cmp_['p_value']:.4f}) —— 这是重大发现, 不要当失败处理")
+        return problems, warnings
+    if units < EXPECTED["derivation_units_min"]:
+        warnings.append(f"单元数 {units} < {EXPECTED['derivation_units_min']}(记录值): "
+                        f"n={n} 不足以复现该结论, 需 n>="
+                        f"{-(-EXPECTED['derivation_units_min'] // len(cases))}")
+    elif cmp_["diff_ci"][0] <= 0:
+        problems.append(f"增量的 CI 下界 {cmp_['diff_ci'][0]:+.3f} <= 0: 在足够样本下"
+                        f"仍无法确认增量存在 —— 记录值是 CI95=[+0.086,+0.285]")
+    elif cmp_["mean_diff"] < EXPECTED["derivation_increment_min"]:
+        problems.append(f"增量 {cmp_['mean_diff']:+.3f} < 阈值 "
+                        f"{EXPECTED['derivation_increment_min']}(记录值 +0.183): 已衰减")
+    return problems, warnings

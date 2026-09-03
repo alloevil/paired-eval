@@ -33,6 +33,8 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
                     p_win<=2 被 `p_win+p_loss>1` 的检查支配
   蒙特卡洛计数微调  reproduce_findings 的 sims=200->201: 两者都给 required_tasks=81,
                     对输出不可观测(把 sims 钉死等于禁止将来调精度)
+  被显著性掩盖      check_derivation_increment 的 `mean_diff < 0 and 显著`: mean_diff
+                    恰为 0 时置换检验的 p 必为 1.0, 永不显著, 故 < 换 <= 不可观测
   上限阀门的等价边界  p_floor / min_units_for_alpha 的 n<64 与 n>64 安全阀: n>=64 时
                     2/2^n 已远低于重采样地板 1/(resamples+1), max() 恒取后者, 故 64
                     换 65、`<` 换 `<=`、`>` 换 `>=` 都不可观测。起点 n=1 换 2 同理:

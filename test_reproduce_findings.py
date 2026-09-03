@@ -244,6 +244,128 @@ def test_null_bound_equal_to_record_is_full_reproduction():
         rf.pb.report = real
 
 
+
+
+def _fixed_grader(single, checked):
+    """替换 _grade_derivation: 按是否自检返回固定分数, 不触碰模型或 judge。"""
+    return lambda case, call, judge, use_check: checked if use_check else single
+
+
+def test_derivation_check_five_criteria():
+    """推算增量复现的五条判据必须各指其病 —— 报错原因错了, 维护者会修错东西。
+    这条结论推翻了第113/114轮的"纯替代", 直接改了实践建议, 故最该被监控。"""
+    real = rf._grade_derivation
+    try:
+        # 1 增量正常: 完整复现
+        rf._grade_derivation = _fixed_grader(0.79, 0.92)
+        assert rf.check_derivation_increment(None, None, n=6, verbose=False) == ([], [])
+        # 2 增量消失: CI 下界触 0 -> 失败, 且要点出记录值供对照
+        rf._grade_derivation = _fixed_grader(0.79, 0.79)
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and "CI 下界" in p[0] and "+0.086" in p[0], p
+        # 3 方向反转: 单独报出, 且明示不要当失败处理
+        rf._grade_derivation = _fixed_grader(0.90, 0.50)
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and "方向反转" in p[0] and "重大发现" in p[0]
+        assert w == [], "已判方向反转就不该再报其他"
+        # 4 参照格触顶: 处方必须是换题, 而非放宽阈值(第113~115轮的教训)
+        rf._grade_derivation = _fixed_grader(1.0, 1.0)
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and "触顶" in p[0] and "换题, 不是放宽阈值" in p[0]
+        # 5 样本不足: 只警告, 且给出所需轮数 —— 不许把"没测出"说成"没有"
+        rf._grade_derivation = _fixed_grader(0.79, 0.92)
+        p, w = rf.check_derivation_increment(None, None, n=2, verbose=False)
+        assert p == [] and len(w) == 1 and "n>=6" in w[0], (p, w)
+        # 边界: 恰好 18 单元(n=6 x 3 题)不该报样本不足
+        p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert w == [], "18 单元恰好达标, 不该警告"
+    finally:
+        rf._grade_derivation = real
+
+
+def test_main_wires_judge_only_when_given():
+    """未传 judge 时不得跑推算检查 —— 否则单模型无 judge 的用户会看到凭空结论。"""
+    import contextlib
+    import io
+
+    real = rf._grade_derivation
+    try:
+        rf._grade_derivation = _fixed_grader(0.79, 0.92)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = rf.main(strict_only)
+        assert rc == 0 and "推算增量" not in buf.getvalue()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = rf.main(strict_only, judge=object(), n_deriv=6)
+        out = buf.getvalue()
+        assert rc == 0 and "=== 3 推算增量" in out
+        pass_line = [l for l in out.splitlines() if l.startswith("PASS")][0]
+        assert "推算增量" in pass_line and "样本不足" not in pass_line, pass_line
+        # 样本不足时 PASS 行须标注, 与 null 检查同规矩
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rf.main(strict_only, judge=object(), n_deriv=2)
+        pass_line = [l for l in buf.getvalue().splitlines() if l.startswith("PASS")][0]
+        assert "样本不足" in pass_line, pass_line
+    finally:
+        rf._grade_derivation = real
+
+
+
+
+def test_derivation_thresholds_are_inclusive():
+    """三处阈值恰好相等时都算通过 —— 否则正常噪声会在边界上随机报警。
+    变异测试第117轮抓到这三处: 触顶阈 / 增量阈 / 单元数下界的 == 情形全未被覆盖。"""
+    E = rf.EXPECTED
+    real = rf._grade_derivation
+    try:
+        # 触顶阈: 参照格恰好 0.95 不算触顶(此时报的是增量不足, 病因不同)
+        rf._grade_derivation = _fixed_grader(E["derivation_ceiling_max"], 1.0)
+        p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and "触顶" not in p[0], p
+        rf._grade_derivation = _fixed_grader(E["derivation_ceiling_max"] + 0.001, 1.0)
+        p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert "触顶" in p[0], p
+        # 增量阈: 恰好等于阈值通过, 差一点点则失败
+        base = 0.80
+        rf._grade_derivation = _fixed_grader(base, base + E["derivation_increment_min"])
+        assert rf.check_derivation_increment(None, None, n=6, verbose=False) == ([], [])
+        rf._grade_derivation = _fixed_grader(base, base + E["derivation_increment_min"] - 1e-3)
+        p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert len(p) == 1 and "已衰减" in p[0], p
+        # 单元数下界: 恰好 18 通过; 15(n=5)警告并给出所需轮数
+        rf._grade_derivation = _fixed_grader(0.79, 0.92)
+        assert rf.check_derivation_increment(None, None, n=6, verbose=False)[1] == []
+        p, w = rf.check_derivation_increment(None, None, n=5, verbose=False)
+        assert p == [] and "单元数 15 < 18" in w[0] and "n>=6" in w[0], (p, w)
+    finally:
+        rf._grade_derivation = real
+
+
+
+
+def test_ceiling_threshold_exact_equality():
+    """真正测"参照格恰好等于触顶阈"需要二进制可精确表示的值 —— 用 0.95 时
+    sum([0.95]*18)/18 = 0.9499999999999997, 相等分支从未被走到, 变异测试抓到了这点。
+    契约: 恰好等于阈值不算触顶(与其他阈值一致, 边界包含)。"""
+    real_g, real_c = rf._grade_derivation, rf.EXPECTED["derivation_ceiling_max"]
+    try:
+        rf.EXPECTED["derivation_ceiling_max"] = 0.5      # 0.5 在二进制中精确
+        assert sum([0.5] * 18) / 18 == 0.5, "该值必须精确, 否则又测不到相等"
+        rf._grade_derivation = _fixed_grader(0.5, 0.75)
+        p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert not any("触顶" in x for x in p), f"ref 恰好等于阈值不该判触顶: {p}"
+        # 超出一个最小浮点步长即判触顶
+        import math
+        rf._grade_derivation = _fixed_grader(math.nextafter(0.5, 1.0), 0.75)
+        p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
+        assert any("触顶" in x for x in p), f"ref 略超阈值必须判触顶: {p}"
+    finally:
+        rf._grade_derivation = real_g
+        rf.EXPECTED["derivation_ceiling_max"] = real_c
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

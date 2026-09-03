@@ -8,10 +8,14 @@
 #   3 手挑变异      ~81s   42 个高阶语义变异 + 腐坏检测(PATTERN-MISS)
 #   4 机械变异棘轮  ~6min  381 个变异点全量, 与基线比对, 新增存活即失败
 #
-# 刻意不在此脚本内的第五层: reproduce_findings.py(约32次真实模型调用, 需注入 call)。
+# 刻意不在此脚本内的第五层: reproduce_findings.py, 需注入真实模型调用。三项检查:
+#   1 脚手架效应   ~32 次调用   固定模型, 严格脚手架 vs 裸指令
+#   2 模型 null    ~32 次调用   两模型不可区分(需第二个模型)
+#   3 推算增量     ~250 次调用  严格提示上自检仍有增量(需 judge 做 claim 抽取+grounding)
 # 它检的是"记录的实测结论是否漂移", 依赖外部服务与配额, 不能进无网可跑的清单;
-# 其判据逻辑本身已被 test_reproduce_findings.py 用假 call 覆盖(在第 1 层里)。
-# 发布前若涉及结论变更, 手动跑: python3 -c "import reproduce_findings as r; r.main(call)"
+# 三项的判据逻辑都已被 test_reproduce_findings.py 用假 call/judge 覆盖(在第 1 层里)。
+# 发布前若涉及结论变更, 手动跑:
+#   python3 -c "import reproduce_findings as r; r.main(call, call_b=..., judge=...)"
 #
 # 用法: sh checkall.sh          全部四层
 #       sh checkall.sh --fast   只跑前三层(跳过 6 分钟的棘轮)

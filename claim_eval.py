@@ -350,32 +350,25 @@ def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):
 def required_tasks(p_win, p_loss, alpha=0.05, power=0.8, sims=500, n_max=2048, seed=0):
     """功效分析: 估算配对 A/B 需要多少任务才能以 power 的概率检出差异。
     p_win / p_loss = 每个任务上 A 胜 / 负于 B 的概率(其余平局), 要求 p_win > p_loss。
-    模拟符号检验(正态近似)的功效, 几何网格搜最小 n; n_max 内达不到返回 None。
-    paired_compare 不显著时, 用它回答"还要加多少任务", 而不是反复重跑碰运气。"""
+    内部用 mcnemar_exact 判定 —— 规划器与检验器必须用同一把尺子: 早先这里用符号检验的
+    正态近似, 实测在规划出的 n 上精确检验只有 0.765 功效(目标 0.8), 即 n 被系统性低估。
+    几何网格搜最小 n; n_max 内达不到返回 None。
+    paired_compare/mcnemar 不显著时, 用它回答"还要加多少任务", 而不是反复重跑碰运气。"""
     if not 0 <= p_loss < p_win <= 1 or p_win + p_loss > 1:
         raise ValueError("需要 0 <= p_loss < p_win 且 p_win + p_loss <= 1")
-    # 双侧临界值: 对 Phi(z) = 1 - alpha/2 二分求逆
-    target, lo_z, hi_z = 1 - alpha / 2, 0.0, 10.0
-    for _ in range(60):
-        mid = (lo_z + hi_z) / 2
-        if 0.5 * (1 + math.erf(mid / math.sqrt(2))) < target:
-            lo_z = mid
-        else:
-            hi_z = mid
-    z_crit = (lo_z + hi_z) / 2
     rng = random.Random(seed)
 
     def power_at(n):
         hits = 0
         for _ in range(sims):
-            s = q = 0
+            a_only = b_only = 0
             for _ in range(n):
                 r = rng.random()
                 if r < p_win:
-                    s += 1; q += 1
+                    a_only += 1
                 elif r < p_win + p_loss:
-                    s -= 1; q += 1
-            if q and abs(s) / math.sqrt(q) >= z_crit:
+                    b_only += 1
+            if mcnemar_exact(a_only, b_only) < alpha:
                 hits += 1
         return hits / sims
 

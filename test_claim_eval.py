@@ -449,6 +449,31 @@ def test_holm_controls_fwer():
     assert holm < raw / 3, f"校正必须显著改善: raw={raw:.3f} holm={holm:.3f}"
 
 
+def test_planner_matches_exact_test():
+    """规划器与检验器必须用同一把尺子: 在 required_tasks 给出的 n 上,
+    mcnemar_exact 的实测功效不得低于目标。历史缺陷: 规划器用正态近似时
+    这里只有 0.765(目标0.8), n 被系统性低估。"""
+    import random as _r
+    for p_w, p_l in [(0.5, 0.05), (0.3, 0.1)]:
+        n = ce.required_tasks(p_w, p_l, power=0.8, sims=300, seed=5)
+        assert n is not None
+        rng = _r.Random(9)
+        trials, hits = 300, 0
+        for _ in range(trials):
+            a_only = b_only = 0
+            for _ in range(n):
+                r = rng.random()
+                if r < p_w:
+                    a_only += 1
+                elif r < p_w + p_l:
+                    b_only += 1
+            hits += ce.mcnemar_exact(a_only, b_only) < 0.05
+        assert hits / trials >= 0.78, \
+            f"规划n={n} 实测功效仅 {hits/trials:.3f}(目标0.8): 规划器低估了样本量"
+
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

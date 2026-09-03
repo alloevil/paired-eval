@@ -358,6 +358,40 @@ def test_pair_dropped_reps_counted():
     assert clean["dropped_reps"] == [] and clean["scored_reps"] == 2
 
 
+def test_fingerprint_covers_every_prompt():
+    """七个判定 prompt 每一个都必须影响指纹: 少算任何一个, 改动它就不会换尺子,
+    而分数会被当成同尺可比。此前只测过改 JUDGE_WORLD_SYSTEM, 漏掉其余六个 ——
+    从元组里删掉 rubric prompt 在变异测试中存活。"""
+    import rubric_eval as re_
+    base = et.verifier_fingerprint()
+    targets = [(ce, "EXTRACT_SYSTEM"), (ce, "JUDGE_WORLD_SYSTEM"), (ce, "JUDGE_TRAJ_SYSTEM"),
+               (ce, "DERIVED_SYSTEM"), (ce, "REFORMULATE_SYSTEM"), (ce, "CORROBORATE_SYSTEM"),
+               (re_, "JUDGE_RUBRIC_SYSTEM")]
+    for mod, name in targets:
+        old = getattr(mod, name)
+        try:
+            setattr(mod, name, old + "MUTATED")
+            assert et.verifier_fingerprint() != base, f"{name} 未参与指纹计算"
+        finally:
+            setattr(mod, name, old)
+    assert et.verifier_fingerprint() == base, "全部还原后指纹必须回到原值"
+
+
+def test_summarize_window_boundary():
+    """跨度恰好等于上限时应放行(> 语义): 此前用例都是2小时 vs 1小时, 远离边界,
+    于是 > 改成 >= 在变异测试中存活。"""
+    row = et.evaluate(T_EXACT, response="答案: 8635亿")
+    exact_edge = dict(row, measured_at=row["measured_at"] - 3600)
+    s = et.summarize([row, exact_edge], max_span_s=3600)
+    assert s["n"] == 2, "跨度恰好等于上限应放行"
+    just_over = dict(row, measured_at=row["measured_at"] - 3600.001)
+    try:
+        et.summarize([row, just_over], max_span_s=3600)
+        assert False, "略微超限必须拒绝"
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

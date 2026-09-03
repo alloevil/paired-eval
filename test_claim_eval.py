@@ -655,6 +655,17 @@ def test_wilson_bounds_clamped():
             assert 0.0 <= a <= b <= 1.0, f"k={k},n={n} 区间越界: ({a},{b})"
 
 
+def test_extract_claims_filters_unverifiable():
+    """extract_claims 的过滤此前从未被真正测过: run_world 自己用 _extract_all 过滤,
+    而 trajectory 路由的 mock 全是 verifiable=True —— 去掉过滤在变异测试中存活。"""
+    all_items = ce._extract_all("DOC", mock_llm)
+    filtered = ce.extract_claims("DOC", mock_llm)
+    assert len(all_items) == 4 and len(filtered) == 3
+    assert all(c["verifiable"] for c in filtered)
+    assert "C观点句" in [c["text"] for c in all_items]
+    assert "C观点句" not in [c["text"] for c in filtered], "观点句必须被过滤掉"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

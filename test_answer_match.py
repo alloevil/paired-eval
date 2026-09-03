@@ -83,6 +83,19 @@ def test_non_attempt_reasons():
     assert abs(agg["not_attempted_rate"] - 0.5) < 1e-9, "两类都仍计入总弃答率"
 
 
+def test_match_set_dedup():
+    """一个 gold 只能被匹配一次: 重复预测不该重复得分。
+    此前无用例含重复项, 去掉去重在变异测试中存活。"""
+    r = am.match_set(["a", "a"], ["a"])
+    assert r["precision"] == 0.5 and r["recall"] == 1.0, f"重复预测只算一次: {r}"
+    assert not r["exact"], "预测数与gold数不同, 不算完全一致"
+    r2 = am.match_set(["a", "a", "b"], ["a", "b"])
+    assert abs(r2["precision"] - 2 / 3) < 1e-9 and r2["recall"] == 1.0
+    # 归一化后重复同样只算一次
+    r3 = am.match_set(["Ａ", "a"], ["a"])
+    assert r3["precision"] == 0.5
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

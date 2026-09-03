@@ -904,6 +904,26 @@ def test_report_flags_ceiling_and_floor():
     assert "触顶" not in mid["text"] and "触底" not in mid["text"]
 
 
+
+
+def test_derivation_cases_shape_and_distinctness():
+    """跨条目推算题的结构契约: 它们不走 check 判定(那是单轮题), 而供 trajectory 路由用。
+    形状写错会在真实 A/B 里静默降级 —— observations 少于 1 条时 grounding 无从判定。"""
+    ids = [c["id"] for c in pb.DERIVATION_CASES]
+    assert len(ids) == len(set(ids)) == 3
+    assert not (set(ids) & {t["id"] for t in pb.ALL_TASKS}), \
+        "推算题 id 不得与单轮题冲突: 两者判定机制不同, 混用会用错路由"
+    for c in pb.DERIVATION_CASES:
+        assert c["question"].startswith("问题:"), c["id"]
+        assert len(c["observations"]) >= 1, f"{c['id']}: 至少一条观察"
+        assert all(o.strip() and o.endswith("。") for o in c["observations"]), c["id"]
+        assert c["trap"], f"{c['id']}: 必须写明陷阱形态, 否则后人无法判断题是否还有效"
+        # 关键性质: 答案不能直接出现在任何单条观察里 —— 否则不是"推算"题
+        assert "check" not in c, "推算题没有程序判据, 不该带 check 字段"
+    # 三道题的陷阱必须各不相同(倍数反推/乘积/开方), 否则是同一道题的三个副本
+    assert len({c["trap"] for c in pb.DERIVATION_CASES}) == 3
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -20,7 +20,10 @@ def test_all_canonicals_pass_their_checks():
 def test_ids_unique_and_shape():
     ids = [t["id"] for t in pb.ALL_TASKS]
     assert len(ids) == len(set(ids)), "任务 id 必须唯一"
-    assert len(pb.ALL_TASKS) == 28
+    # 断言构成而非硬编码总数: 加题时不该被迫改测试(硬编码 28 曾在扩充时挂掉)
+    assert len(pb.ALL_TASKS) == (len(pb.EXACT_QA) + len(pb.IF_TASKS)
+                                 + len(pb.CHAR_TASKS) + len(pb.FORMAT_TASKS))
+    assert len(pb.ALL_TASKS) >= 28, "冒烟集不该缩水"
 
 
 def test_run_paired_flow():
@@ -38,8 +41,9 @@ def test_run_paired_flow():
     out = pb.run_paired(model_a, model_b)
     assert not out["dropped"]
     c = out["compare"]
-    assert c["n"] == 28 and c["wins"] == 3 and c["losses"] == 0 and c["ties"] == 25
-    assert abs(c["mean_diff"] - 3 / 28) < 1e-9
+    n = len(pb.ALL_TASKS)
+    assert c["n"] == n and c["wins"] == 3 and c["losses"] == 0 and c["ties"] == n - 3
+    assert abs(c["mean_diff"] - 3 / n) < 1e-9
 
 
 def test_paired_drop_and_crash_tolerance():
@@ -58,7 +62,7 @@ def test_paired_drop_and_crash_tolerance():
 
     out = pb.run_paired(model_a, model_b)
     assert out["dropped"] == ["if-json"]
-    assert out["compare"]["n"] == 27
+    assert out["compare"]["n"] == len(pb.ALL_TASKS) - 1   # 派生: 丢弃1题
     row = next(r for r in out["rows"] if r["id"] == "if-3lines")
     assert row["b"] == 0.0 and row["a"] == 1.0
 
@@ -786,6 +790,44 @@ def test_scaffold_sensitive_subset():
     assert not ok, "带围栏的正确JSON必须判错 —— 这正是该题能测出脚手架差异的原因"
     # 前后空白不该导致失败(判定器 strip 后比较), 否则敏感度来源就不纯
     assert t["check"]('  {"a": 1, "b": 2}  '), "两端空白应被容忍"
+
+
+
+
+def test_format_task_checkers():
+    """三道格式脆弱题的判定器必须精确: 它们是 harness 评测的全部信号来源,
+    判定器一松, 脚手架差异就测不出来。棘轮在它们入库时抓到缺测。"""
+    by = {t["id"]: t for t in pb.FORMAT_TASKS}
+    arr, kv, yml = by["fmt-jsonarr"], by["fmt-kv"], by["fmt-yaml"]
+    for t in (arr, kv, yml):
+        assert t["check"](t["canonical"]), f"{t['id']} canonical 必须通过"
+
+    def rejects(t, bad):
+        try:
+            return not bool(t["check"](bad))
+        except Exception:
+            return True
+
+    # 共同失败形态: markdown 围栏 / 前置解释(实测中裸指令的真实输出)
+    for t, fenced in ((arr, '```json\n[1, 2, 3]\n```'),
+                      (kv, '如下:\n```\nname=a\nage=1\n```'),
+                      (yml, '```yaml\na: 1\nb: 2\n```')):
+        assert rejects(t, fenced), f"{t['id']} 必须拒绝带围栏的正确内容"
+    # 结构不对: 元素个数/类型/键名/空格
+    assert rejects(arr, "[1, 2]") and rejects(arr, "[1, 2, 3, 4]")
+    assert rejects(arr, '[1, 2, "3"]') and rejects(arr, "[true, false, true]")
+    assert rejects(arr, '{"a": 1}'), "对象不是数组"
+    assert rejects(kv, "name=a"), "行数不足"
+    assert rejects(kv, "age=1\nname=a"), "键顺序不对"
+    assert rejects(kv, "name = a\nage = 1"), "含空格必须拒绝"
+    assert rejects(yml, "a:1\nb:2"), "冒号后缺空格"
+    assert rejects(yml, "a: 1\nb: 2\nc: 3"), "多余行"
+    # 只违反"无空格"而不违反"含=": 现有样本都同时违反两条, and 改 or 便存活
+    assert rejects(kv, "name=a b\nage=1"), "值里含空格必须拒绝"
+    # 只违反"含="而不违反"无空格"
+    assert rejects(kv, "name:a\nage=1"), "缺等号必须拒绝"
+    # 两端空白应被容忍(判定器 strip 后比较), 否则敏感度来源不纯
+    assert arr["check"]("  [1, 2, 3]  ") and yml["check"]("a: 1\nb: 2\n")
 
 
 if __name__ == "__main__":

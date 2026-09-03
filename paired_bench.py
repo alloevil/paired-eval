@@ -37,8 +37,8 @@ harness 评测(固定模型比脚手架)与模型评测需要不同的题: 后�
     其余6题     两侧恒过, 零区分力 —— saturation() 报 2/8 有信息, 加题无用
 结论只在它成立的范围内: "严格脚手架对结构化输出是必需的", 而非"脚手架普遍更好"
 (集中度 0.82-1.00 表明差异几乎全来自单题)。SCAFFOLD_SENSITIVE 见文件末尾。
-功效上限(诚实披露): ALL_TASKS 只有 28 题, claim_eval.detectable_effect(28)≈0.27 ——
-即"较优系统需在 ≥27% 的题上单方面胜出且几乎无反向失误"才可能显著。这是冒烟集,
+功效上限(诚实披露): ALL_TASKS 共 31 题, claim_eval.detectable_effect(31)≈0.24 ——
+即"较优系统需在 ≥24% 的题上单方面胜出且几乎无反向失误"才可能显著。这是冒烟集,
 不是能定论的评测集; 要检出 10% 量级的差异需上百道配对任务(见 required_tasks)。
 """
 
@@ -140,7 +140,26 @@ CHAR_TASKS = [
      "check": _eq("化量数参"), "canonical": "化量数参"},
 ]
 
-ALL_TASKS = EXACT_QA + IF_TASKS + CHAR_TASKS
+
+# 格式脆弱题(经两阶段筛选+复核确认对脚手架敏感, 见 SCAFFOLD_SENSITIVE 注释)。
+# 共同失败形态: 裸指令下模型加 markdown 围栏或前置解释, 内容对而格式坏。
+FORMAT_TASKS = [
+    {"id": "fmt-jsonarr", "instruction": "输出一个JSON数组,恰好包含3个整数元素",
+     "check": lambda r: (lambda d: isinstance(d, list) and len(d) == 3
+                         and all(isinstance(x, int) and not isinstance(x, bool) for x in d))(
+                         __import__("json").loads(r.strip())),
+     "canonical": "[1, 2, 3]"},
+    {"id": "fmt-kv", "instruction": "输出两行,每行形如 key=value(无空格),key 分别是 name 和 age",
+     "check": lambda r: (lambda ls: len(ls) == 2 and ls[0].startswith("name=")
+                         and ls[1].startswith("age=") and all("=" in l and " " not in l for l in ls))(
+                         [l for l in r.strip().split("\n") if l.strip()]),
+     "canonical": "name=alice\nage=30"},
+    {"id": "fmt-yaml", "instruction": "输出两行YAML,分别是 a: 1 和 b: 2(冒号后一个空格)",
+     "check": lambda r: [l.rstrip() for l in r.strip().split("\n") if l.strip()] == ["a: 1", "b: 2"],
+     "canonical": "a: 1\nb: 2"},
+]
+
+ALL_TASKS = EXACT_QA + IF_TASKS + CHAR_TASKS + FORMAT_TASKS
 
 
 _TRAIL_CAP = 120  # 留痕截断长度: 够诊断失败模式,不撑爆报告
@@ -568,4 +587,11 @@ RUBRIC_GATE = {
 #   if-3lines 首轮 10/10 vs 8/10, 复核 6/6 vs 6/6 -> 弱信号, 故不列入
 # 其余 IF 题两侧恒过(saturation 报 2/8 有信息), 放进 harness A/B 只是烧钱。
 # 新增条目前请照同样流程实测+复核: 猜测哪些题"应该"敏感, 实测会打脸(本例 7/8 猜错)。
-SCAFFOLD_SENSITIVE = ["if-json"]
+SCAFFOLD_SENSITIVE = ["if-json", "fmt-jsonarr", "fmt-kv", "fmt-yaml"]
+
+# 扩充依据(第二轮筛选, 8 道格式脆弱候选, 严格脚手架 vs 裸指令, 两阶段 n=2 筛 + n=6 复核):
+#   保留 3 道: fmt-jsonarr(2/2 vs 0/2) fmt-kv(2/2 vs 1/2) fmt-yaml(2/2 vs 0/2)
+#   拒 5 道: fmt-csv/oneword/nounit/nopunct/bare-num 两侧恒过 —— 单值输出不易被污染
+# 共同失败形态: ```json ... ``` 围栏, 或 "形式如下:" 之类前置解释。
+# 规律: 脚手架敏感度来自"多行/结构化输出", 单值答案几乎不敏感 —— 又一次猜测被实测收窄
+# (原以为 8 道格式题都敏感, 实际 3/8)。

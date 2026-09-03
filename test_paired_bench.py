@@ -623,6 +623,37 @@ def test_divergence_threshold_boundary():
     assert row2["divergent"] is False
 
 
+
+
+def test_multiline_checker_strictness():
+    """三行任务的检查器要求"每行都是短词": 逐行长度约束此前无探针触及
+    (机械变异把 and 改成 or 后存活)。三行但含超长词必须判错。"""
+    t = next(x for x in pb.ALL_TASKS if x["id"] == "if-3lines")
+    assert t["check"](t["canonical"]), "canonical 仍须通过"
+    assert not t["check"]("苹果啊啊啊啊啊\n香蕉\n梨"), "三行但首行超长必须判错"
+    assert not t["check"]("苹果\n香蕉"), "行数不足必须判错"
+    assert not t["check"]("苹果\n\n梨"), "空行必须判错"
+
+
+def test_interleaved_dropped_reps():
+    """交错路由的 dropped_reps 此前无人断言(机械变异 +=1 改 +=2 后存活):
+    有效轮次 n 与被弃轮次必须同时可读, 否则无法核对总尝试数。"""
+    tasks = pb.ALL_TASKS[:1]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    flip = {"i": 0}
+
+    def half(p):
+        flip["i"] += 1
+        return None if flip["i"] % 2 == 0 else good(p)
+
+    out = pb.run_interleaved({"ok": good, "half": half}, tasks=tasks, n=4)
+    row = out["reports"]["ok"][0]
+    assert row["dropped_reps"] == 2, f"应有2轮被弃: {row['dropped_reps']}"
+    assert row["n"] == 2 and len(row["runs"]) == 2
+    assert row["n"] + row["dropped_reps"] == 4, "有效轮 + 被弃轮 = 总轮数"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

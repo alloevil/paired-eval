@@ -666,6 +666,45 @@ def test_extract_claims_filters_unverifiable():
     assert "C观点句" not in [c["text"] for c in filtered], "观点句必须被过滤掉"
 
 
+
+
+def test_planner_nmax_boundary():
+    """所需 n 恰好等于 n_max 时必须返回它(<= 语义), 而不是判为不可达。
+    机械变异把 <= 改成 < 后存活: 此前用例的 n_max 从不与网格点重合。"""
+    n = ce.required_tasks(0.9, 0.0, sims=200, n_max=8, seed=2)
+    assert n == 8, f"n_max 恰好够用时应返回 8, 得到 {n!r}"
+    # 略低于所需时仍返回 None
+    assert ce.required_tasks(0.9, 0.0, sims=200, n_max=7, seed=2) is None
+
+
+def test_mde_matches_exact_test():
+    """MDE 的两个方向都要钉住(此前只钉了一半, 于是"计数器初值+1"的变异存活):
+    - 充分性: 在报出的 MDE 上, 精确检验的实测功效必须达标(否则 MDE 被低估)。
+    - 最小性: 在 MDE 往下三个网格步处, 功效必须低于目标(否则 MDE 被高估) ——
+      MDE 的定义是"最小可检出", 只测充分性会让任何虚高的值都通过。
+      实测该变异使 MDE 偏移 3-4 个网格步(0.19->0.22), 正是被最小性这一侧抓住。"""
+    import random as _r
+    n = 40
+
+    def power_at(p, seed=23, trials=300):
+        rng = _r.Random(seed)
+        hits = 0
+        for _ in range(trials):
+            a_only = 0
+            for _ in range(n):
+                if rng.random() < p:
+                    a_only += 1
+            hits += ce.mcnemar_exact(a_only, 0) < 0.05
+        return hits / trials
+
+    mde = ce.detectable_effect(n, sims=300, seed=11)
+    assert mde is not None
+    assert power_at(mde) >= 0.75, f"MDE={mde} 实测功效不足: MDE 被低估"
+    lower = round(mde - 3 * 0.01, 10)
+    assert power_at(lower) < 0.80, \
+        f"MDE={mde} 下移三步({lower})仍达标 {power_at(lower):.3f}: MDE 被高估, 不是最小值"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -392,6 +392,22 @@ def test_summarize_window_boundary():
         pass
 
 
+
+
+def test_validate_task_rejects_malformed_task():
+    """缺 id / 非 dict 的 task 此前从未被测: 机械变异把 or 改成 and 后存活,
+    意味着"task 必须是含 id 的 dict"这条校验一直裸奔。"""
+    for bad in [None, [], "task", 42, {}, {"verification": {"class": "exact", "gold": "1"}}]:
+        try:
+            et.validate_task(bad)
+            assert False, f"畸形 task 应拒绝: {bad!r}"
+        except ValueError:
+            pass
+    # 合法 task 仍通过
+    v = et.validate_task(T_EXACT)
+    assert v["class"] == "exact"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

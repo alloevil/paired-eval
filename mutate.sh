@@ -1,20 +1,39 @@
 #!/bin/sh
-# 变异测试: 检验测试套件自身的杀伤力。每个变异是一处语义改动, 套件必须失败(killed)。
+# 手挑语义变异: 检验测试套件的杀伤力。每个变异是一处语义改动, 套件必须失败(killed)。
 # "测试全绿"只说明没触发失败, 不等于测试能抓到bug —— 杀伤率才是套件质量的度量。
+#
+# 与 mutate_auto.py 的分工(两者互补, 不重复):
+#   本脚本    整表达式替换等高阶变异(加权退化为未加权、双侧检验改单侧、复核判定反转),
+#             AST 工具生成不出来; 代价是靠字符串匹配定位, 代码改形状就会 PATTERN-MISS。
+#   自动工具  机械枚举比较符/布尔/常量, 覆盖面完整无选择偏差, 带基线棘轮与 --changed。
+#
+# 退出码: 任何 SURVIVED 或 PATTERN-MISS 都非零 —— PATTERN-MISS 是腐坏信号:
+# 变异模式失配说明被测代码换了形状, 必须复查新形状是否仍被测试覆盖。
 # 用法: sh mutate.sh   (每次变异后自动还原源文件)
-# 定向变异测试: 每个变异都是一处语义改动, 套件必须失败(killed) 才算有杀伤力
-cd ~/claim-eval
+cd "$(dirname "$0")"
+fail=0
 run() {
   desc="$1"; file="$2"; old="$3"; new="$4"
   cp "$file" /tmp/mut.bak
-  python3 - "$file" "$old" "$new" <<'PY'
+  if ! python3 -B - "$file" "$old" "$new" <<'PY'
 import sys, pathlib
 p, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
 t = pathlib.Path(p).read_text(encoding="utf-8")
 assert old in t, f"变异模式未命中: {old!r}"
 pathlib.Path(p).write_text(t.replace(old, new, 1), encoding="utf-8")
 PY
-  if sh runtests.sh >/dev/null 2>&1; then echo "SURVIVED  $desc"; else echo "killed    $desc"; fi
+  then
+    echo "PATTERN-MISS  $desc (代码已改形状, 复查覆盖)"
+    cp /tmp/mut.bak "$file"
+    fail=1
+    return
+  fi
+  if sh runtests.sh >/dev/null 2>&1; then
+    echo "SURVIVED  $desc"
+    fail=1
+  else
+    echo "killed    $desc"
+  fi
   cp /tmp/mut.bak "$file"
 }
 run "wilson_ci: z 1.96->1.0"            claim_eval.py "def wilson_ci(k, n, z=1.96)" "def wilson_ci(k, n, z=1.0)"
@@ -69,3 +88,5 @@ run "canary: 分离度门槛失效"          rubric_eval.py "separation >= margi
 run "match_set: 去重失效"             answer_match.py "if j not in matched_gold and eq(p, g):" "if eq(p, g):"
 run "match_numeric: abs_tol 覆盖rel"  answer_match.py "abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)" "abs(a - b) <= min(rel_tol * max(abs(a), abs(b)), abs_tol)"
 run "aggregate_grades: attempted口径" answer_match.py 'att = sum(g["verdict"] != "not_attempted" for g in grades)' 'att = len(grades)'
+
+exit $fail

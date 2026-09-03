@@ -11,6 +11,8 @@
 用法: python3 mutate_auto.py [模块...] [--limit N] [--seed S]
      python3 mutate_auto.py --baseline   # 全量跑并把已确认的等价变异写入基线
      python3 mutate_auto.py --check      # 全量跑并与基线比对, 新增存活即失败(棘轮)
+     python3 mutate_auto.py --changed    # 只变异未提交改动涉及的行(开发中用, 约20秒)
+     python3 mutate_auto.py --since=HEAD~3   # 只变异指定 ref 以来改动的行
 
 
 存活变异必须分类, 不该盲目追 100%:
@@ -33,6 +35,7 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
 """
 import ast
 import json
+import re
 import pathlib
 import random
 import subprocess
@@ -121,10 +124,25 @@ def suite_passes():
                           capture_output=True).returncode == 0
 
 
-def run(modules, limit=None, seed=0):
+def changed_lines(mod, since="HEAD"):
+    """git diff 里该文件的新增/修改行号集合。空集表示未改动。
+    用于把变异范围收窄到"刚写的代码" —— 全量扫描要 6 分钟不会有人在开发中跑,
+    而"你刚写的这几十行有测试吗"只需十几个变异点、约20秒, 才真正可用。"""
+    out = subprocess.run(["git", "diff", "-U0", since, "--", mod],
+                         cwd=ROOT, capture_output=True, text=True)
+    lines = set()
+    for hunk in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", out.stdout, re.M):
+        start = int(hunk.group(1))
+        count = int(hunk.group(2) or 1)
+        lines.update(range(start, start + count))
+    return lines
+
+
+def run(modules, limit=None, seed=0, since=None):
     """全程 try/finally 保护: 变异会真的改写源文件, 中断(Ctrl-C/超时/异常)若不还原,
     仓库会停在被变异的状态 —— 本工具第一次全量运行就因工具层超时踩到过,
-    留下一个被 unparse 的 paired_bench.py, 而后续运行的"空变异对照"如实报告了不可信。"""
+    留下一个被 unparse 的 paired_bench.py, 而后续运行的"空变异对照"如实报告了不可信。
+    since 非空时只变异该 git ref 以来改动过的行(未改动的模块整个跳过)。"""
     results = []
     for mod in modules:
         path = ROOT / mod
@@ -142,10 +160,27 @@ def run(modules, limit=None, seed=0):
         tree_c = ast.parse(original)          # skip_ids 依赖节点对象同一性: 必须同一棵树
         total = count_points(tree_c, _noise_constants(tree_c))
         idxs = list(range(total))
-        if limit and limit < total:
+        scope = ""
+        if since is not None:
+            touched = changed_lines(mod, since)
+            if not touched:
+                continue                      # 该模块未改动
+            keep = []
+            for i in idxs:
+                probe_tree = ast.parse(original)   # 与 skip 集同一棵树: 否则索引空间错位,
+                probe = _Mutator(i, _noise_constants(probe_tree))   # 会变异到别的点上
+                probe.visit(probe_tree)
+                if probe.applied and int(probe.applied[1:probe.applied.index(":")]) in touched:
+                    keep.append(i)
+            idxs = keep
+            scope = f", 限定 {since} 以来改动的 {len(touched)} 行"
+            if not idxs:
+                print(f"== {mod}: 改动行内无可变异点{scope}")
+                continue
+        if limit and limit < len(idxs):
             idxs = sorted(random.Random(seed).sample(idxs, limit))
         print(f"== {mod}: {total} 个可变异点(已滤除默认参数/切片长度等已知等价类), "
-              f"本次跑 {len(idxs)} 个 (unparse 对照通过)")
+              f"本次跑 {len(idxs)} 个{scope} (unparse 对照通过)")
         try:
             for i in idxs:
                 tree_i = ast.parse(original)
@@ -183,17 +218,24 @@ def _survivors(results):
 def check_against_baseline(results, write=False):
     """棘轮: 新增存活变异即失败。杀伤率是一次性成就, 除非把它钉成基线 ——
     否则新增无测试保护的代码会让存活数静默上涨, 而 pre-commit 只看"测试通过"。
-    基线里记的是已分析确认的等价变异清单(见本文件顶部的五类分类)。"""
+    基线里记的是已分析确认的等价变异清单(见本文件顶部的五类分类)。
+    比对范围限定在本次实际跑过的模块: 拿部分结果与全库基线比, 未跑的模块会被
+    误报成"已修补"(实测踩过)。--baseline 写入时同理只更新跑过的模块。"""
     now = _survivors(results)
+    ran = sorted({mod for mod, _, _ in results})
+    old = (set(json.loads(BASELINE.read_text(encoding="utf-8"))["survivors"])
+           if BASELINE.exists() else set())
     if write:
-        BASELINE.write_text(json.dumps({"survivors": now}, ensure_ascii=False, indent=1),
+        # 只替换跑过模块的条目, 其余模块的既有条目原样保留
+        merged = sorted([s for s in old if s.split("|")[0] not in ran] + now)
+        BASELINE.write_text(json.dumps({"survivors": merged}, ensure_ascii=False, indent=1),
                             encoding="utf-8")
-        print(f"基线已写入 {BASELINE.name}: {len(now)} 个已确认的等价变异")
+        print(f"基线已更新 {BASELINE.name}: 本次模块 {len(now)} 条, 全库共 {len(merged)} 条")
         return 0
     if not BASELINE.exists():
         print("!! 无基线文件, 先跑 --baseline 生成")
         return 1
-    known = set(json.loads(BASELINE.read_text(encoding="utf-8"))["survivors"])
+    known = {s for s in old if s.split("|")[0] in ran}   # 只与跑过的模块比
     new = [s for s in now if s not in known]
     fixed = [s for s in sorted(known) if s not in now]
     for s in new:
@@ -203,7 +245,7 @@ def check_against_baseline(results, write=False):
     if new:
         print(f"\n失败: {len(new)} 个新增存活变异 —— 新代码缺少能区分它的测试")
         return 1
-    print(f"\n通过: 无新增存活(基线 {len(known)} 个, 本次 {len(now)} 个)")
+    print(f"\n通过: 无新增存活(比对模块 {ran}: 基线 {len(known)} 个, 本次 {len(now)} 个)")
     return 0
 
 
@@ -213,7 +255,8 @@ if __name__ == "__main__":
     flags = {a for a in sys.argv[1:] if a.startswith("--") and "=" not in a}
     mods = args or ["claim_eval.py", "answer_match.py", "rubric_eval.py",
                     "eval_task.py", "paired_bench.py"]
+    since = opts.get("--since") or ("HEAD" if "--changed" in flags else None)
     res = run(mods, limit=int(opts.get("--limit", 0)) or None,
-              seed=int(opts.get("--seed", 0)))
+              seed=int(opts.get("--seed", 0)), since=since)
     if flags & {"--baseline", "--check"}:
         sys.exit(check_against_baseline(res, write="--baseline" in flags))

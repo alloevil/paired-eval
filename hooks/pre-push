@@ -1,0 +1,23 @@
+#!/bin/sh
+# 推送前门禁: 对本次推送涉及的改动做变异检查 —— 比 pre-commit 的"测试通过"更强,
+# 它问的是"你改的代码有能区分对错的测试吗"。
+# 分层理由: pre-commit 必须快(~1s), 否则会被 --no-verify 绕过, 那比没有门禁更糟;
+# 变异检查按改动行收窄后约 30s, 放在推送这个低频动作上正合适。
+# 绕过需显式 --no-verify(等于签字承认新代码可能没有测试保护)。
+set -e
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+# 优先与上游比; 无上游(首次推送新分支)时退化为与上一次提交比
+since=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo "")
+[ -n "$since" ] || since=HEAD~1
+
+sh runtests.sh >/dev/null || {
+    echo "pre-push: 测试未全绿, 推送被拒。"
+    exit 1
+}
+python3 -B mutate_auto.py --since="$since" --check || {
+    echo "pre-push: 改动行存在未被测试区分的变异, 推送被拒。"
+    echo "          补测后重推, 或确认是等价变异后用 --baseline 更新基线。"
+    exit 1
+}

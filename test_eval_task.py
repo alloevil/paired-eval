@@ -299,6 +299,38 @@ def test_reason_propagates_to_summary():
 
 
 
+def test_repeat_reports_dispersion():
+    """重复的目的就是量方差, 只报均值等于白重复:
+    [1,0,1,0] 与恒定0.5 均值相同, 前者是判定不稳定, 后者是稳定中等分。"""
+    import rubric_eval as re_
+    flip = {"i": 0}
+
+    def alternating(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        flip["i"] += 1
+        return {"verdict": "met" if flip["i"] % 2 else "not_met", "reasoning": "r"}
+
+    def steady(prompt, system, schema):
+        # 两条criteria各半: 每次都稳定得0.5
+        return {"verdict": "met" if "条A" in prompt else "not_met", "reasoning": "r"}
+
+    t1 = {"id": "t-flip", "verification": {"class": "rubric",
+          "criteria": [{"text": "条A", "weight": 1}]}}
+    t2 = {"id": "t-steady", "verification": {"class": "rubric",
+          "criteria": [{"text": "条A", "weight": 1}, {"text": "条B", "weight": 1}]}}
+    r1 = et.repeat_evaluate(t1, n=4, response="R", llm=alternating)
+    r2 = et.repeat_evaluate(t2, n=4, response="R", llm=steady)
+    assert r1["mean_score"] == r2["mean_score"] == 0.5, "均值相同"
+    assert r1["score_min"] == 0.0 and r1["score_max"] == 1.0
+    assert r2["score_min"] == r2["score_max"] == 0.5
+    assert r1["score_stdev"] > 0.5 and r2["score_stdev"] == 0.0, \
+        f"离散度必须区分两者: {r1['score_stdev']} vs {r2['score_stdev']}"
+    assert r1["successes"] == 2, "二值序列仍附 successes"
+    # n=1 时无标准差, 不硬造0
+    single = et.repeat_evaluate(t2, n=1, response="R", llm=steady)
+    assert single["score_stdev"] is None and single["scored"] == 1
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -26,6 +26,7 @@ execution / deferred / preference / policy 不在本模块职责内 —— 它�
 """
 
 import hashlib
+import statistics
 import time
 
 import answer_match as am
@@ -187,15 +188,21 @@ def summarize(rows, strict_fp=True, max_span_s=3600):
 
 def repeat_evaluate(task, n=8, response=None, observations=None, **deps):
     """同一 (任务,配置) 重复 n 次 —— judge 类路由跨 run 有方差,单 run 结论无效。
-    返回逐 run 结果与聚合: mean_score(pass@1)、二值任务附 successes 与 pass^k 素材
-    (可靠性用 claim_eval.pass_hat_k(successes, n, k) 计算)。"""
+    既然重复的目的就是量方差, 就必须报离散度: mean 会把 [1,0,1,0] 和恒定 0.5 说成一样,
+    而前者是"判定不稳定", 后者是"稳定的中等分", 两者可用性完全不同。
+    返回 mean_score / score_min / score_max / score_stdev(样本标准差, n<2 为 None)
+    / scored(有效分数个数); 二值分数序列附 successes 供 claim_eval.pass_hat_k 读可靠性。"""
     if n < 1:
         raise ValueError("n >= 1")
     runs = [evaluate(task, response=response, observations=observations, **deps)
             for _ in range(n)]
     scores = [r["score"] for r in runs if r["score"] is not None]
     out = {"task_id": task["id"], "n": n, "runs": runs, "scores": scores,
-           "mean_score": sum(scores) / len(scores) if scores else None}
+           "scored": len(scores),
+           "mean_score": sum(scores) / len(scores) if scores else None,
+           "score_min": min(scores) if scores else None,
+           "score_max": max(scores) if scores else None,
+           "score_stdev": statistics.stdev(scores) if len(scores) > 1 else None}
     if scores and all(s in (0.0, 1.0) for s in scores):
         out["successes"] = int(sum(scores))
     return out

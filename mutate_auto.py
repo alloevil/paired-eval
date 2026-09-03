@@ -65,18 +65,53 @@ def _noise_constants(tree):
     return skip
 
 
-class _Mutator(ast.NodeTransformer):
-    """把第 target 个可变异点改掉; 其余原样。"""
+def _scopes(tree):
+    """行号 -> 所在函数限定名(取最内层)。用于给变异点一个编辑稳定的标识:
+    行号会随任何上方插入而平移, 基线里 13 条已知等价变异会集体变成"新增存活",
+    旧条目同时显示"已修补" —— 棘轮第一次被使用就会因此误报。
+    函数名 + 同类出现序号只在该函数自身结构变化时才变, 正是我们想要的敏感度。"""
+    spans = []
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                name = f"{prefix}{child.name}"
+                spans.append((child.lineno, child.end_lineno or child.lineno, name))
+                walk(child, name + ".")
+            else:
+                walk(child, prefix)
+    walk(tree, "")
+    return spans
 
-    def __init__(self, target, skip_ids=frozenset()):
+
+class _Mutator(ast.NodeTransformer):
+    """把第 target 个可变异点改掉; 其余原样。
+    applied 形如 "wilson_ci#0: LtE->Lt": 函数限定名 + 该函数内同类变异的出现序号,
+    不含行号 —— 基线标识必须能扛住无关位置的编辑。"""
+
+    def __init__(self, target, skip_ids=frozenset(), scopes=()):
         self.target = target
         self.skip_ids = skip_ids
+        self.scopes = scopes
         self.seen = 0
         self.applied = None
+        self.hit_line = None      # 仅供 --changed 过滤用, 不进标识(标识必须编辑稳定)
+        self._counts = {}
+
+    def _label(self, desc, lineno):
+        inner = ""
+        for start, end, name in self.scopes:
+            if start <= lineno <= end and len(name) >= len(inner):
+                inner = name
+        key = (inner or "<module>", desc)
+        idx = self._counts.get(key, 0)
+        self._counts[key] = idx + 1
+        return f"{key[0]}#{idx}: {desc}"
 
     def _hit(self, desc, lineno):
+        label = self._label(desc, lineno)
         if self.seen == self.target:
-            self.applied = f"L{lineno}: {desc}"
+            self.applied = label
+            self.hit_line = lineno
             self.seen += 1
             return True
         self.seen += 1
@@ -114,7 +149,7 @@ class _Mutator(ast.NodeTransformer):
 
 
 def count_points(tree, skip_ids=frozenset()):
-    m = _Mutator(-1, skip_ids)
+    m = _Mutator(-1, skip_ids, _scopes(tree))
     m.visit(tree)
     return m.seen
 
@@ -168,9 +203,10 @@ def run(modules, limit=None, seed=0, since=None):
             keep = []
             for i in idxs:
                 probe_tree = ast.parse(original)   # 与 skip 集同一棵树: 否则索引空间错位,
-                probe = _Mutator(i, _noise_constants(probe_tree))   # 会变异到别的点上
+                probe = _Mutator(i, _noise_constants(probe_tree),      # 会变异到别的点上
+                                 _scopes(probe_tree))
                 probe.visit(probe_tree)
-                if probe.applied and int(probe.applied[1:probe.applied.index(":")]) in touched:
+                if probe.applied and probe.hit_line in touched:
                     keep.append(i)
             idxs = keep
             scope = f", 限定 {since} 以来改动的 {len(touched)} 行"
@@ -184,7 +220,7 @@ def run(modules, limit=None, seed=0, since=None):
         try:
             for i in idxs:
                 tree_i = ast.parse(original)
-                mut = _Mutator(i, _noise_constants(tree_i))
+                mut = _Mutator(i, _noise_constants(tree_i), _scopes(tree_i))
                 new_tree = mut.visit(tree_i)
                 if mut.applied is None:
                     continue

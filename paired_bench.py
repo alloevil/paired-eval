@@ -118,11 +118,20 @@ _TRAIL_CAP = 120  # 留痕截断长度: 够诊断失败模式,不撑爆报告
 
 def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
     """完整配对 A/B: 双侧作答 -> 程序判定 -> 任一侧 None 成对丢弃 -> 置换检验。
-    返回 {"rows": [{"id","a","b","resp_a","resp_b"}], "dropped": [id], "compare": ...}。
+    调用顺序逐题交替(偶数题先A,奇数题先B): 固定先A后B会把窗口内漂移与预热效应
+    系统性地压在同一侧 —— 与 judge 评测里交换位置消除 position bias 同理。
+    返回 {"rows": [{"id","a","b","resp_a","resp_b","a_first"}], "dropped": [id], "compare": ...}。
     原始输出留痕(截断): 分歧项诊断靠看失败输出长什么样,只留 0/1 无法审计。"""
     rows, dropped = [], []
-    for t in tasks:
-        ra, rb = model_a(prompt_prefix + t["instruction"]), model_b(prompt_prefix + t["instruction"])
+    for idx, t in enumerate(tasks):
+        prompt = prompt_prefix + t["instruction"]
+        a_first = idx % 2 == 0
+        if a_first:
+            ra = model_a(prompt)
+            rb = model_b(prompt)
+        else:
+            rb = model_b(prompt)
+            ra = model_a(prompt)
         if ra is None or rb is None:
             dropped.append(t["id"])
             continue
@@ -132,8 +141,9 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
                 return 1.0 if t["check"](str(resp)) else 0.0
             except Exception:
                 return 0.0   # 输出连判定器都解析不了 = 不合规
-        rows.append({"id": t["id"], "a": score(ra), "b": score(rb),
-                     "resp_a": str(ra)[:_TRAIL_CAP], "resp_b": str(rb)[:_TRAIL_CAP]})
+        rows.append({"id": t["id"], "a": score(ra), "b": score(rb), "a_first": a_first,
+                     "resp_a": str(ra)[:_TRAIL_CAP], "resp_b": str(rb)[:_TRAIL_CAP],
+                     "measured_at": time.time()})
     if not rows:
         raise ValueError("全部任务被成对丢弃,无可比数据")
     compare = ce.paired_compare([r["a"] for r in rows], [r["b"] for r in rows])
@@ -171,18 +181,25 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
 
 def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                         prompt_prefix="严格按要求输出,不要任何多余内容。要求: "):
-    """交错重复配对: 每题每轮先A后B紧邻调用。漂移同时作用于两侧,配对差值仍然有效。
+    """交错重复配对: 每题每轮 A/B 紧邻调用,且逐轮交替谁先(ABBA)。
+    紧邻 -> 漂移同时作用于两侧,配对差值仍然有效; 交替 -> 顺序/预热效应不偏向任一侧。
     对比: 先把A全测完再测B(常见做法)会把跨窗口漂移误读成系统差异 ——
     本仓库实测同一模型同一题两个时间窗得 0/8 与 8/8, 顺序测法下这会变成一个假结论。
     任一侧该轮拒答则丢弃该轮(两侧同弃,保持配对); 全轮被弃则丢弃该题。
-    返回 {"rows": [...逐题双侧 successes/pass@1/pass^k 与 per_rep...],
+    返回 {"rows": [...逐题双侧 successes/pass@1/pass^k, per_rep, orders...],
           "dropped": [id], "compare": 逐题 pass@1 的配对检验}。"""
     rows, dropped = [], []
     for t in tasks:
-        per_rep, dropped_reps = [], 0
-        for _ in range(n):
-            ra = model_a(prompt_prefix + t["instruction"])
-            rb = model_b(prompt_prefix + t["instruction"])
+        per_rep, dropped_reps, orders = [], 0, []
+        for rep in range(n):
+            prompt = prompt_prefix + t["instruction"]
+            a_first = rep % 2 == 0
+            if a_first:
+                ra = model_a(prompt)
+                rb = model_b(prompt)
+            else:
+                rb = model_b(prompt)
+                ra = model_a(prompt)
             if ra is None or rb is None:
                 dropped_reps += 1
                 continue
@@ -193,6 +210,7 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                 except Exception:
                     return False
             per_rep.append((ok(ra), ok(rb)))
+            orders.append(a_first)
         if not per_rep:
             dropped.append(t["id"])
             continue
@@ -204,7 +222,8 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                      "a_pass_at_1": sa / eff, "b_pass_at_1": sb / eff,
                      "a_pass_hat_k": ce.pass_hat_k(sa, eff, min(k, eff)),
                      "b_pass_hat_k": ce.pass_hat_k(sb, eff, min(k, eff)),
-                     "per_rep": per_rep, "measured_at": time.time()})
+                     "per_rep": per_rep, "orders": orders,
+                     "measured_at": time.time()})
     if not rows:
         raise ValueError("全部任务被丢弃,无可比数据")
     compare = ce.paired_compare([r["a_pass_at_1"] for r in rows],

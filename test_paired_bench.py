@@ -238,6 +238,33 @@ def test_paired_repeated_survives_drift():
 
 
 
+def test_call_order_alternates_and_cancels_bias():
+    """先叫谁必须逐题/逐轮交替: 否则"第一个被调用者占优"这类顺序效应
+    会被读成系统差异(与 judge position bias 同源)。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] in ("if-upper", "if-pi8")]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    # 顺序偏置模型: 每对里第一个被调用的答对,第二个答错
+    slot = {"i": 0}
+
+    def biased(prompt):
+        slot["i"] += 1
+        first = slot["i"] % 2 == 1
+        return canon[[k for k in canon if k in prompt][0]] if first else "错"
+
+    out = pb.run_paired(biased, biased, tasks=tasks)
+    assert [r["a_first"] for r in out["rows"]] == [True, False], "逐题交替"
+    c = out["compare"]
+    assert c["wins"] == c["losses"] == 1 and c["mean_diff"] == 0.0, \
+        f"顺序偏置必须两侧对消,不得产出假赢家: {c}"
+    slot["i"] = 0
+    out2 = pb.run_paired_repeated(biased, biased, tasks=tasks[:1], n=4)
+    row = out2["rows"][0]
+    assert row["orders"] == [True, False, True, False], "逐轮交替(ABBA)"
+    assert row["a_successes"] == row["b_successes"] == 2, "四轮下顺序优势各得其半"
+    assert out2["compare"]["mean_diff"] == 0.0
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

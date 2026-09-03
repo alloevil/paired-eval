@@ -153,6 +153,19 @@ harness x agent 的 2x2(同一批题、同一次交错运行, 3 轮):
   (1.96*sd/Δ)^2 = 18 单元, 补跑 4 轮后才拿到 p=0.0046。教训: 点估计的方向不是结论,
   CI 是否含 0 才是; 而样本量该在看到 CI 之后按需补, 不是先定后测。
 
+p 值地板的基数(第119轮, 集成测试抓到的真 bug): McNemar 精确检验可达的最小 p 只由
+  不一致对数决定 —— d 对全在一侧时 p = 2/2^d, 与总配对单元数无关。而 interpret 当时
+  用单元数算地板, 于是 10 单元/5 不一致对的设计被报成"未检出差异, 只能排除 >=67%",
+  真相是"不一致对只有 5 个, 最小可能 p 是 0.0625, 效应再大也到不了显著"。
+  两句话给读者的行动完全不同: 前者暗示"效应可能真的小", 后者指向"要么加轮次凑够
+  不一致对, 要么换更能拉开差距的题"。
+  修法: interpret 增加 floor_n 参数(地板基数), report 传入 a_only+b_only; MDE 仍按
+  单元数算 —— 单元越多, 出现不一致对的机会越多, 两个基数各管一件事。
+  连带修正: check_model_null 原先自己重推病因, 零不一致对时误报成"MDE 不可达";
+  改为直接复用 interpret 的诊断文本。教训: 诊断信息只该有一个来源。
+  这个 bug 单测抓不到 —— 各组件单独都对(p_floor 对、McNemar 对、report 对),
+  错在接口处传了语义不同的同名量。第119轮加的 test_pipeline.py 就是为此。
+
 p 值地板(第115轮实测, 会话里第一次撞上): 3 个配对单元时符号翻转检验的最小可能 p 是
   2/2^3=0.25, 与效应多大无关。首轮拿到 Δ=+0.911 CI=[+0.893,+0.926] 却 p=0.252 ——
   区间已把 0 排除十万八千里, 而检验说"不显著"。实测地板: n=3 -> 0.25, n=4 -> 0.13,
@@ -768,7 +781,11 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
         units = sum(len(x.get("runs", [])) for x in reports[r["a"]])
         fake = {"n": units, "mean_diff": r["mean_diff"], "diff_ci": r["diff_ci"],
                 "p_value": r["p_mcnemar_holm"]}
-        verdict = ce.interpret(fake, n_units=units, alpha=alpha)
+        # p 来自 McNemar 精确检验, 其可达最小 p 只由不一致对数决定(与总单元数无关);
+        # MDE 仍按单元数算。第119轮集成测试抓到这处混用: 10 单元/5 不一致对时,
+        # 按单元算地板是 0.002(看起来能显著), 按不一致对算是 0.0625(其实到不了)。
+        verdict = ce.interpret(fake, n_units=units, alpha=alpha,
+                               floor_n=r["a_only"] + r["b_only"])
         pairs.append({**r, "units": units, "interpretation": verdict})
         conc = "n/a" if r["concentration"] is None else f"{r['concentration']:.2f}"
         lines.append(

@@ -491,20 +491,28 @@ def min_units_for_alpha(alpha=0.05, resamples=10000):
     return n
 
 
-def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0):
+def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None):
     """把配对比较结果翻译成可报告结论 —— null 分支强制附"能排除多大效应"。
     不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
     而那个设计只有 16 个配对单元, MDE=0.46, 实际只能排除 >=46% 的效应。
-    n_units: 配对单元数(逐题或逐轮), 默认取 compare["n"]。
-    返回 {"verdict","p_value","mean_diff","diff_ci","n_units","rules_out","text"}:
+    n_units: 配对单元数(逐题或逐轮), 默认取 compare["n"]; 决定 MDE。
+    floor_n: p 地板的基数, 默认等于 n_units。两者可以不同, 这是第119轮集成测试
+      抓到的真 bug: 若 compare 的 p 来自 McNemar 精确检验, 其可达的最小 p 只由
+      不一致对数决定(d 对全在一侧时 p = 2/2^d), 与总单元数无关。10 个单元里只有
+      5 对不一致时, 地板是 0.0625 而不是 0.002 —— 前者意味着"这个检验根本到不了
+      显著", 后者会被写成"未检出差异, 只能排除 >=67%"。两句话给读者的行动完全不同。
+      MDE 仍按单元数算(单元越多, 出现不一致对的机会越多), 故两个基数各管一件事。
+    返回 {"verdict","p_value","mean_diff","diff_ci","n_units","rules_out","p_floor","text"}:
       verdict="significant" -> 报效应量与区间
       verdict="null"        -> rules_out=该设计的 MDE(None 表示样本量下不可达,
                                即这条 null 无信息, 不能当证据用)
     """
     n = n_units if n_units is not None else compare["n"]
     p = compare["p_value"]
+    fn = n if floor_n is None else max(1, floor_n)
     out = {"p_value": p, "mean_diff": compare["mean_diff"],
-           "diff_ci": compare["diff_ci"], "n_units": n, "rules_out": None}
+           "diff_ci": compare["diff_ci"], "n_units": n, "rules_out": None,
+           "p_floor": p_floor(fn) if n >= 1 else None}
     if p < alpha:
         out["verdict"] = "significant"
         out["text"] = (f"显著: Δ={compare['mean_diff']:+.3f} "
@@ -518,19 +526,21 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0):
         out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
                        f"不能当作『无差异』的证据")
         return out
-    floor = p_floor(n)
+    floor = out["p_floor"]
     if floor >= alpha:   # 地板等于 alpha 时显著性也不可达(判据是 p < alpha)
         # p 被样本量地板卡死: 效应再大也拿不到显著, 报"不显著"是误导
+        basis = "配对单元" if floor_n is None else "不一致对"
         try:
-            need = f"需至少 {min_units_for_alpha(alpha)} 个单元"
+            need = f"需至少 {min_units_for_alpha(alpha)} 个{basis}"
         except ValueError:
             # alpha 已触及重采样下限, 加单元无用 —— 报告函数在此不得抛错
-            need = f"alpha 已触及重采样下限, 增加单元无用, 需提高 resamples"
+            need = f"alpha 已触及重采样下限, 增加{basis}无用, 需提高 resamples"
         out["verdict"] = "null"
         out["rules_out"] = None
         out["p_floor"] = floor
-        out["text"] = (f"检验无力: n={n} 时最小可能 p 是 {floor:.3f} >= alpha={alpha}, "
-                       f"效应再大也不可能显著(点估计 Δ={compare['mean_diff']:+.3f}, "
+        out["text"] = (f"检验无力: {basis}只有 {fn} 个, 最小可能 p 是 {floor:.3f} "
+                       f">= alpha={alpha}, 效应再大也不可能显著"
+                       f"(点估计 Δ={compare['mean_diff']:+.3f}, "
                        f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}]) "
                        f"—— {need}")
         return out

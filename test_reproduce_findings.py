@@ -164,21 +164,23 @@ def test_null_check_separates_drift_from_weak_power():
     """null 复现的核心分界: "差异出现了"是失败, "样本不够"只是警告 —— 不能混。
     第107轮我把 16 单元(MDE 0.46)的 null 当成"效应不存在", 脚本不许重犯。"""
     good = lambda p: _canon_for(p)
-    # 两模型真等价: null 成立, 但 16 单元只能排除 >=46% -> WARN 而非静默 PASS
+    # 两模型完全等价 -> 零不一致对。第119轮修正后这里的诊断变准了: 病因不是"界更松",
+    # 而是"检验无力" —— McNemar 一个不一致对都没有, p 恒为 1.0, 与单元数无关。
     problems, warnings = rf.check_model_null(good, good, n=4, verbose=False)
     assert problems == [], "两侧等价不该报失败"
-    assert len(warnings) == 1 and "界更松" in warnings[0]
-    assert "46%" in warnings[0] and "81 个单元" in warnings[0], \
-        "警告必须给出这次的界与补齐所需样本量, 否则读者无法判断可信度"
+    assert len(warnings) == 1 and "不构成复现" in warnings[0]
+    assert "检验无力" in warnings[0] and "不一致对只有 1 个" in warnings[0], \
+        f"警告须复用 interpret 的准确诊断, 而非自己重推病因: {warnings[0]}"
+    assert "80 单元" in warnings[0], "仍须给出记录值供对照"
     # 一侧明显更差: null 失效 -> FAIL, 且不许同时报 WARN(原因要单一明确)
     problems, warnings = rf.check_model_null(good, lambda p: "错", n=4, verbose=False)
     assert len(problems) == 1 and "null 已失效" in problems[0]
     assert warnings == [], "已判失效就不该再报界的警告"
     assert "不要直接改记录" in problems[0]
-    # 样本降到无信息: 必须说"不能算复现", 而不是通过
+    # 样本降到最低: 同样只警告, 不许通过
     problems, warnings = rf.check_model_null(good, good, n=1, verbose=False)
     assert problems == [] and len(warnings) == 1
-    assert "无信息" in warnings[0] and "不能算复现" in warnings[0]
+    assert "不构成复现" in warnings[0]
 
 
 def test_main_exit_codes_and_null_wiring():

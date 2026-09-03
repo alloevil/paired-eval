@@ -92,8 +92,10 @@ def check_model_null(call_a, call_b, n=4, verbose=True):
         return problems, warnings
     bound = verdict["rules_out"]
     if bound is None:
-        warnings.append(f"这次的 null 无信息: {verdict['n_units']} 个单元下 MDE 不可达 —— "
-                        f"不能算复现(记录值是 80 单元 / MDE 0.10)")
+        # 复用 interpret 的诊断: 病因可能是单元太少, 也可能是零不一致对导致检验无力,
+        # 这里自己重推会说错(第119轮实测: 零不一致对时曾误报成"MDE 不可达")。
+        warnings.append(f"这次的 null 不构成复现: {verdict['text']} "
+                        f"(记录值是 80 单元 / MDE 0.10)")
     elif bound > EXPECTED["model_null_bound"]:
         warnings.append(f"null 仍成立但界更松: 只排除 >={bound:.0%}(记录 "
                         f"<={EXPECTED['model_null_bound']:.0%}) —— 需 "

@@ -971,7 +971,7 @@ def test_interpret_distinguishes_powerless_test_from_null():
     # 效应巨大但 n=3: 必须说"检验无力", 且给出所需单元数, 不许报 rules_out
     weak = ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3))
     assert weak["verdict"] == "null" and weak["rules_out"] is None
-    assert "检验无力" in weak["text"] and "需至少 6 个单元" in weak["text"]
+    assert "检验无力" in weak["text"] and "需至少 6 个配对单元" in weak["text"]
     assert weak["p_floor"] == 0.25
     assert "+1.000" in weak["text"], "无力时仍须报点估计与 CI, 否则读者以为没效应"
     # n=6 同样效应: 地板降到 0.031 < 0.05, 于是判显著
@@ -983,7 +983,7 @@ def test_interpret_distinguishes_powerless_test_from_null():
     assert tie["p_floor"] == 2 / 64
     # alpha 更严时同一 n=6 会翻回"检验无力"
     strict = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6), alpha=0.01)
-    assert "检验无力" in strict["text"] and "需至少 8 个单元" in strict["text"]
+    assert "检验无力" in strict["text"] and "需至少 8 个配对单元" in strict["text"]
 
 
 
@@ -996,7 +996,7 @@ def test_p_floor_knife_edges():
     # n=6 且 alpha 恰好等于地板: 必须判"检验无力", 并要求更多单元
     r = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6), alpha=a)
     assert "检验无力" in r["text"], r["text"]
-    assert "需至少 7 个单元" in r["text"], r["text"]
+    assert "需至少 7 个配对单元" in r["text"], r["text"]
     # alpha 略大于地板并不够: 地板 2/2^n 是理论下界, 重采样实测 p 落在其上方
     # (n=6 完美分离: 地板 0.03125, 实测 ~0.032)。故 alpha=地板*1.01 仍不显著。
     c6 = ce.paired_compare([1.0] * 6, [0.0] * 6)

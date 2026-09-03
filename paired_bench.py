@@ -307,7 +307,9 @@ def pairwise_compare(reports, max_span_s=3600, require_interleaved=True):
     两个家族各自独立做 Holm 校正(p_perm_holm / p_mcnemar_holm)。
     守卫与 reliability_matrix 同源(任务集一致/测量窗口/交错性)。
     返回按 |mean_diff| 降序的 [{a,b,mean_diff,p_perm,p_perm_holm,a_only,b_only,
-    mcnemar_p,p_mcnemar_holm}]。"""
+    mcnemar_p,p_mcnemar_holm,by_task,concentration}]。by_task/concentration 揭示
+    不一致对的分布: 同样的总数, 集中在一题(可能是题目问题)与散布多题(系统性差距)
+    诊断完全不同, 而 p 值对两者一视同仁。"""
     reliability_matrix(reports, max_span_s=max_span_s,
                        require_interleaved=require_interleaved)  # 复用三道守卫
     names = sorted(reports)
@@ -320,13 +322,25 @@ def pairwise_compare(reports, max_span_s=3600, require_interleaved=True):
         vb = [r["pass_at_1"] for r in reports[b]]
         cmp_ = ce.paired_compare(va, vb)
         a_only = b_only = 0
+        by_task = []
         for ra, rb in zip(reports[a], reports[b]):
+            ta = tb = 0
             for xa, xb in zip(ra.get("runs", []), rb.get("runs", [])):
-                a_only += bool(xa) and not bool(xb)
-                b_only += bool(xb) and not bool(xa)
+                ta += bool(xa) and not bool(xb)
+                tb += bool(xb) and not bool(xa)
+            a_only += ta
+            b_only += tb
+            if ta or tb:
+                by_task.append({"id": ra["id"], "a_only": ta, "b_only": tb})
+        total_disc = a_only + b_only
+        # 集中度: 单题贡献了多大比例的不一致对。接近1 = 单题异常(可能是题目问题),
+        # 分散 = 系统性差距。总不一致对数相同但分布不同, 诊断完全不同, 而 p 值看不出来。
+        concentration = (max(r["a_only"] + r["b_only"] for r in by_task) / total_disc
+                         if by_task and total_disc else None)
         out.append({"a": a, "b": b, "mean_diff": cmp_["mean_diff"],
                     "p_perm": cmp_["p_value"], "diff_ci": cmp_["diff_ci"],
                     "a_only": a_only, "b_only": b_only,
+                    "by_task": by_task, "concentration": concentration,
                     "mcnemar_p": ce.mcnemar_exact(a_only, b_only)})
     for key, adj in (("p_perm", "p_perm_holm"), ("mcnemar_p", "p_mcnemar_holm")):
         for row, p in zip(out, ce.holm_adjust([r[key] for r in out])):

@@ -510,6 +510,40 @@ def test_world_and_rubric_gate_fixtures():
 
 
 
+def test_discordance_distribution():
+    """不一致对的分布必须可见: 总数相同但集中在一题 vs 散布多题, 诊断完全不同,
+    而 p 值对两者一视同仁。"""
+    tasks = pb.ALL_TASKS[:4]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+
+    def only_first_task_bad(prompt):
+        t = next(t for t in tasks if t["instruction"] in prompt)
+        return "错" if t["id"] == tasks[0]["id"] else canon[t["instruction"]]
+
+    def every_task_flaky(prompt):
+        t = next(t for t in tasks if t["instruction"] in prompt)
+        every_task_flaky.n[t["id"]] = every_task_flaky.n.get(t["id"], 0) + 1
+        return canon[t["instruction"]] if every_task_flaky.n[t["id"]] % 2 == 0 else "错"
+    every_task_flaky.n = {}
+
+    # 集中型: 4题×2轮 = 全部不一致对都来自第1题
+    conc = pb.pairwise_compare(pb.run_interleaved(
+        {"good": good, "bad1": only_first_task_bad}, tasks=tasks, n=2)["reports"])[0]
+    assert conc["a_only"] + conc["b_only"] == 2 and len(conc["by_task"]) == 1
+    assert conc["concentration"] == 1.0, "单题贡献全部不一致对"
+    assert conc["by_task"][0]["id"] == tasks[0]["id"]
+    # 分散型: 每题各贡献一次
+    spread = pb.pairwise_compare(pb.run_interleaved(
+        {"good": good, "flaky": every_task_flaky}, tasks=tasks, n=2)["reports"])[0]
+    assert len(spread["by_task"]) == 4, "四题各有不一致对"
+    assert spread["concentration"] < 0.5, f"分散型集中度应低: {spread['concentration']}"
+    # 无分歧时集中度为 None(不是0,"没有分布"与"分布均匀"是两回事)
+    same = pb.pairwise_compare(pb.run_interleaved(
+        {"g1": good, "g2": good}, tasks=tasks, n=2)["reports"])[0]
+    assert same["by_task"] == [] and same["concentration"] is None
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

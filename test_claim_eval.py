@@ -705,6 +705,48 @@ def test_mde_matches_exact_test():
         f"MDE={mde} 下移三步({lower})仍达标 {power_at(lower):.3f}: MDE 被高估, 不是最小值"
 
 
+
+
+def test_derived_tolerance_inclusive():
+    """derived 的容差同样是闭区间: 差值恰好等于容差应判 ok。
+    (verify_derived 有独立的比较式, 与 match_numeric 那处需各自钉住。)"""
+    obs = [{"tool_call_id": "tc_1", "observation": "x"}]
+    # 重算=100, 声称=98, rel_tol=0.02 -> 容差 = 0.02*100 = 2.0, 差值恰好 2.0
+    plan = lambda p, s, sch: {"computable": True, "expression": "100",
+                              "claimed_value": 98, "inputs": []}
+    assert ce.verify_derived("边界", obs, plan, rel_tol=0.02)["verdict"] == "derived-ok"
+    plan2 = lambda p, s, sch: {"computable": True, "expression": "100",
+                               "claimed_value": 97.9, "inputs": []}
+    assert ce.verify_derived("略超", obs, plan2, rel_tol=0.02)["verdict"] == "derived-wrong"
+
+
+def test_holm_never_exceeds_one():
+    """校正后的 p 值必须封顶 1.0。此前用例里最小 p 乘完不超过 1,
+    单调 running-max 把缺失的封顶掩盖了 —— 机械变异把 min(1.0,·) 改成 min(2.0,·) 后存活。"""
+    adj = ce.holm_adjust([0.6, 0.7])      # 0.6*2 = 1.2, 未封顶就会溢出
+    assert adj == [1.0, 1.0], f"必须封顶到1.0, 得到 {adj}"
+    adj2 = ce.holm_adjust([0.4, 0.9, 0.95])   # 0.4*3 = 1.2
+    assert all(p <= 1.0 for p in adj2) and adj2[0] == 1.0
+    # 全域检查: 任意 p 组合的校正结果都不得越界
+    for ps in ([0.99] * 5, [0.5, 0.51], [1.0], [0.0, 1.0], [0.34, 0.34, 0.34]):
+        out = ce.holm_adjust(ps)
+        assert all(0.0 <= p <= 1.0 for p in out), f"{ps} -> {out} 越界"
+
+
+
+
+def test_derived_zero_guard():
+    """容差分母里的 1e-9 只在两值都趋零时起作用: 它把容差压到近乎绝对零,
+    否则 0 vs 0.01 这种"数量级级别的错"会被判 ok。机械变异把 1e-9 改成 ~1.0 后存活。"""
+    obs = [{"tool_call_id": "tc_1", "observation": "x"}]
+    mk = lambda expr, claimed: (lambda p, s, sch: {"computable": True, "expression": expr,
+                                                   "claimed_value": claimed, "inputs": []})
+    # 重算=0, 声称=0.01: 相对容差无意义, 必须判错(epsilon 不得放大容差)
+    assert ce.verify_derived("零基准", obs, mk("0", 0.01), rel_tol=0.02)["verdict"] == "derived-wrong"
+    # 两者都恰好为 0: 必须判 ok(epsilon 防止 0/0 退化)
+    assert ce.verify_derived("双零", obs, mk("0", 0), rel_tol=0.02)["verdict"] == "derived-ok"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -408,6 +408,30 @@ def test_validate_task_rejects_malformed_task():
     assert v["class"] == "exact"
 
 
+
+
+def test_pair_one_sided_none():
+    """只有一侧无分数的轮次也必须被剔除并归因: 此前用例都是"两侧同时 None",
+    于是把 and 改成 or 后仍然存活 —— 而 or 会让 None 混进均值计算直接崩。"""
+    import rubric_eval as re_
+    calls = {"i": 0}
+
+    def b_abstains_first_rep(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        calls["i"] += 1
+        # 单条criteria: 第1轮 a_first -> 调用1=a侧, 调用2=b侧(令其弃权)
+        return {"verdict": "abstain" if calls["i"] == 2 else "met", "reasoning": "r"}
+
+    t = {"id": "t-one-side", "verification": {"class": "rubric",
+         "criteria": [{"text": "条A", "weight": 1}]}}
+    out = et.evaluate_pair(t, "回答A", "回答B", n=2, llm=b_abstains_first_rep)
+    assert out["scored_reps"] == 1, f"仅第2轮可比: {out['scored_reps']}"
+    assert [d["rep"] for d in out["dropped_reps"]] == [0]
+    assert out["dropped_reps"][0]["sides"] == ["b"], "必须指出是 b 侧无分数"
+    assert out["a_mean"] == 1.0 and out["b_mean"] == 1.0, "均值只用可比轮次"
+    assert out["compare"]["n"] == 1
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

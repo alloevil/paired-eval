@@ -654,6 +654,49 @@ def test_interleaved_dropped_reps():
     assert row["n"] + row["dropped_reps"] == 4, "有效轮 + 被弃轮 = 总轮数"
 
 
+
+
+def test_json_checker_rejects_wrong_shape():
+    """if-json 的错误探针此前全是"非法JSON", 于是首个 and 改成 or 后存活。
+    合法 JSON 但形状不对(键缺失/多余/类型错)必须判错。"""
+    t = next(x for x in pb.ALL_TASKS if x["id"] == "if-json")
+    assert t["check"](t["canonical"])
+    for bad in ['{"a": 1}', '{"a": 1, "b": 2, "c": 3}', '{"a": 1, "b": "x"}',
+                '{"a": 1, "b": true}', '[1, 2]', '"just a string"', '{"a": 1.5, "b": 2}']:
+        try:
+            ok = bool(t["check"](bad))
+        except Exception:
+            ok = False
+        assert not ok, f"形状不对却通过: {bad}"
+
+
+def test_order_alternation_beyond_two_tasks():
+    """顺序交替要在 3 题以上才能区分 %2 与 %3: 此前只测了2题,
+    前两项恰好相同, 于是 idx%2 改成 idx%3 后存活。"""
+    tasks = pb.ALL_TASKS[:4]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    out = pb.run_paired(good, good, tasks=tasks)
+    assert [r["a_first"] for r in out["rows"]] == [True, False, True, False], \
+        "四题必须严格 T/F 交替"
+
+
+def test_run_paired_refusal_fields():
+    """run_paired 的批次拒答字典此前只在 shell 里手验过, 测试只断言了 dropped_detail,
+    于是初值 0 改成 1 后存活。三个入口的拒答字段必须都被钉住。"""
+    tasks = pb.ALL_TASKS[:4]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    out = pb.run_paired(good, good, tasks=tasks)
+    assert out["refusals"] == {"a": 0, "b": 0}, "无拒答必须是精确的零"
+    assert out["refusal_rate"] == {"a": 0.0, "b": 0.0}
+    assert out["attempts_per_side"] == 4
+    picky = lambda p: None if tasks[2]["instruction"] in p else good(p)
+    out2 = pb.run_paired(good, picky, tasks=tasks)
+    assert out2["refusals"] == {"a": 0, "b": 1}
+    assert out2["refusal_rate"]["b"] == 0.25 and out2["refusal_rate"]["a"] == 0.0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

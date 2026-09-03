@@ -134,9 +134,10 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
     """完整配对 A/B: 双侧作答 -> 程序判定 -> 任一侧 None 成对丢弃 -> 置换检验。
     调用顺序逐题交替(偶数题先A,奇数题先B): 固定先A后B会把窗口内漂移与预热效应
     系统性地压在同一侧 —— 与 judge 评测里交换位置消除 position bias 同理。
-    返回 {"rows": [{"id","a","b","resp_a","resp_b","a_first"}], "dropped": [id], "compare": ...}。
+    返回 {"rows": [{"id","a","b","resp_a","resp_b","a_first"}], "dropped": [id],
+          "dropped_detail": [{"id","sides"}], "compare": ...}。
     原始输出留痕(截断): 分歧项诊断靠看失败输出长什么样,只留 0/1 无法审计。"""
-    rows, dropped = [], []
+    rows, dropped, dropped_detail = [], [], []
     for idx, t in enumerate(tasks):
         prompt = prompt_prefix + t["instruction"]
         a_first = idx % 2 == 0
@@ -148,6 +149,9 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
             ra = model_a(prompt)
         if ra is None or rb is None:
             dropped.append(t["id"])
+            # 哪一侧拒答是系统属性(安全过滤/不可用), A侧全拒与双侧偶发不是一回事
+            dropped_detail.append({"id": t["id"],
+                                   "sides": [s for s, r in (("a", ra), ("b", rb)) if r is None]})
             continue
 
         def score(resp):
@@ -161,7 +165,8 @@ def run_paired(model_a, model_b, tasks=ALL_TASKS, prompt_prefix="严格按要求
     if not rows:
         raise ValueError("全部任务被成对丢弃,无可比数据")
     compare = ce.paired_compare([r["a"] for r in rows], [r["b"] for r in rows])
-    return {"rows": rows, "dropped": dropped, "compare": compare}
+    return {"rows": rows, "dropped": dropped, "dropped_detail": dropped_detail,
+            "compare": compare}
 
 
 def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
@@ -200,11 +205,12 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
     对比: 先把A全测完再测B(常见做法)会把跨窗口漂移误读成系统差异 ——
     本仓库实测同一模型同一题两个时间窗得 0/8 与 8/8, 顺序测法下这会变成一个假结论。
     任一侧该轮拒答则丢弃该轮(两侧同弃,保持配对); 全轮被弃则丢弃该题。
-    返回 {"rows": [...逐题双侧 successes/pass@1/pass^k, per_rep, orders...],
-          "dropped": [id], "compare": 逐题 pass@1 的配对检验}。"""
+    返回 {"rows": [...逐题双侧 successes/pass@1/pass^k, per_rep, orders, refusals...],
+          "dropped": [id], "compare": 逐题 pass@1 的配对检验}。
+    refusals 记录该题各侧拒答次数 —— 一侧全拒与双侧偶发不是一回事。"""
     rows, dropped = [], []
     for t in tasks:
-        per_rep, dropped_reps, orders = [], 0, []
+        per_rep, dropped_reps, orders, refusals = [], 0, [], {}
         for rep in range(n):
             prompt = prompt_prefix + t["instruction"]
             a_first = rep % 2 == 0
@@ -216,6 +222,9 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
                 ra = model_a(prompt)
             if ra is None or rb is None:
                 dropped_reps += 1
+                for s, r in (("a", ra), ("b", rb)):
+                    if r is None:
+                        refusals[s] = refusals.get(s, 0) + 1
                 continue
 
             def ok(resp):
@@ -232,6 +241,7 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
         sa = sum(x for x, _ in per_rep)
         sb = sum(y for _, y in per_rep)
         rows.append({"id": t["id"], "n": eff, "dropped_reps": dropped_reps,
+                     "refusals": refusals or None,   # 哪一侧拒答: 系统属性, 不该被合并计数
                      "a_successes": sa, "b_successes": sb,
                      "a_pass_at_1": sa / eff, "b_pass_at_1": sb / eff,
                      "a_pass_hat_k": ce.pass_hat_k(sa, eff, min(k, eff)),
@@ -267,13 +277,16 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
         prompt = prompt_prefix + t["instruction"]
         oks = {nm: [] for nm in names}
         resps = {nm: [] for nm in names}
-        orders, dropped_reps = [], 0
+        orders, dropped_reps, refusals = [], 0, {}
         for rep in range(n):
             shift = rep % len(names)
             order = names[shift:] + names[:shift]
             got = {nm: models[nm](prompt) for nm in order}
             if any(got[nm] is None for nm in names):
                 dropped_reps += 1
+                for nm in names:
+                    if got[nm] is None:
+                        refusals[nm] = refusals.get(nm, 0) + 1
                 continue
             orders.append(order)
             for nm in names:
@@ -293,7 +306,8 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
                                 "pass_at_1": s / eff,
                                 "pass_hat_k": ce.pass_hat_k(s, eff, min(k, eff)),
                                 "runs": oks[nm], "responses": resps[nm],
-                                "dropped_reps": dropped_reps, "orders": orders,
+                                "dropped_reps": dropped_reps,
+                                "refusals": refusals or None, "orders": orders,
                                 "measured_at": stamp})
     if not any(reports[nm] for nm in names):
         raise ValueError("全部任务被丢弃,无可比数据")

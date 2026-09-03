@@ -544,6 +544,45 @@ def test_discordance_distribution():
     assert same["by_task"] == [] and same["concentration"] is None
 
 
+def test_refusal_attribution():
+    """拒答归属必须可见: 一侧全拒(安全过滤/不可用)与双侧偶发是不同的系统事实,
+    只报"丢弃N题"会把前者伪装成对称损耗。"""
+    tasks = pb.ALL_TASKS[:3]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    refuser = lambda p: None                     # 该侧全拒
+
+    out = pb.run_paired(good, good, tasks=tasks)
+    assert out["dropped"] == [] and out["dropped_detail"] == []
+    try:                                          # 全拒时仍响亮报错
+        pb.run_paired(good, refuser, tasks=tasks)
+        assert False, "全部丢弃应报错"
+    except ValueError:
+        pass
+    # 只在特定题上拒答: 归属到具体侧
+    picky = lambda p: None if tasks[1]["instruction"] in p else good(p)
+    out2 = pb.run_paired(good, picky, tasks=tasks)
+    assert out2["dropped"] == [tasks[1]["id"]]
+    assert out2["dropped_detail"] == [{"id": tasks[1]["id"], "sides": ["b"]}], \
+        "必须指出是 b 侧拒答"
+    # 重复配对: 逐题记录各侧拒答次数
+    flaky = {"i": 0}
+
+    def half_refuse(p):
+        flaky["i"] += 1
+        return None if flaky["i"] % 2 == 0 else good(p)
+
+    rep = pb.run_paired_repeated(good, half_refuse, tasks=tasks[:1], n=4)
+    row = rep["rows"][0]
+    assert row["refusals"] == {"b": 2} and row["dropped_reps"] == 2, \
+        f"拒答应归到 b 侧: {row['refusals']}"
+    # N系统交错: 按系统名归属
+    inter = pb.run_interleaved({"ok": good, "picky": half_refuse}, tasks=tasks[:1], n=4)
+    r0 = inter["reports"]["ok"][0]
+    assert r0["refusals"] and set(r0["refusals"]) <= {"ok", "picky"}
+    assert "picky" in r0["refusals"], "拒答方必须被点名"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

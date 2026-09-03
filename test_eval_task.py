@@ -240,6 +240,44 @@ def test_evaluate_pair_cancels_judge_order_bias():
 
 
 
+def test_grounding_policy():
+    """真但无据的 claim(参数知识)是否算违规,由任务声明决定 ——
+    实测: 模型补一句事实正确但不在轨迹里的话, deep-research 该罚, 通用问答不该。"""
+    def traj_llm(prompt, system, schema):
+        if system is ce.EXTRACT_SYSTEM:
+            return {"claims": [
+                {"text": "有据事实A", "source_quote": "A", "verifiable": True,
+                 "importance": "core", "search_query": "qA"},
+                {"text": "有据事实B", "source_quote": "B", "verifiable": True,
+                 "importance": "core", "search_query": "qB"},
+                {"text": "真但无据的补充", "source_quote": "C", "verifiable": True,
+                 "importance": "detail", "search_query": "qC"}]}
+        if "无据" in prompt:
+            return {"verdict": "fabricated", "source_tool_call": None,
+                    "evidence_quote": "", "reasoning": "r"}
+        return {"verdict": "grounded", "source_tool_call": "tc_1",
+                "evidence_quote": "q", "reasoning": "r"}
+
+    obs = [{"tool_call_id": "tc_1", "tool": "s", "observation": "o"}]
+    strict = {"id": "t-strict", "verification": {"class": "trajectory"}}
+    r1 = et.evaluate(strict, response="DOC", llm=traj_llm, observations=obs)
+    assert abs(r1["score"] - 2 / 3) < 1e-9, "默认 must_ground: 无据即扣分"
+    assert r1["metrics"]["grounding_policy"] == "must_ground"
+    lenient = {"id": "t-lenient", "verification": {
+        "class": "trajectory", "grounding_policy": "allow_parametric"}}
+    r2 = et.evaluate(lenient, response="DOC", llm=traj_llm, observations=obs)
+    assert r2["score"] == 1.0, "allow_parametric: 参数知识剔出分母"
+    assert r2["metrics"]["parametric"] == 1 and r2["metrics"]["fabricated"] == 1, \
+        "剔出分母但必须单独报数,不许消失"
+    bad = {"id": "t-bad", "verification": {"class": "trajectory", "grounding_policy": "whatever"}}
+    try:
+        et.evaluate(bad, response="DOC", llm=traj_llm, observations=obs)
+        assert False, "非法 policy 应拒绝"
+    except ValueError:
+        pass
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

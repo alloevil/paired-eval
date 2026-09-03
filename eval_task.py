@@ -104,11 +104,25 @@ def evaluate(task, response=None, observations=None,
     if cls == "trajectory":
         if response is None or llm is None or observations is None:
             raise ValueError(f"task {task['id']}: trajectory 类需要 response + llm + observations")
+        policy = v.get("grounding_policy", "must_ground")
+        if policy not in ("must_ground", "allow_parametric"):
+            raise ValueError(f"task {task['id']}: grounding_policy 只能是 "
+                             "must_ground / allow_parametric")
         claims = ce.extract_claims(response, llm)
         results = list(pmap(
             lambda c: ce.verify_trajectory(c["text"], observations, llm), claims))
         m = ce.aggregate_trajectory(results)
-        return _finish({**base, "score": m["grounding_rate"], "verdict": None,
+        m["grounding_policy"] = policy
+        if policy == "allow_parametric":
+            # 真但无据的 claim(参数知识)不计违规: 从分母剔除, 单独报数。
+            # 实测案例: 模型补一句"字节跳动是非上市公司" —— 事实为真但不在轨迹里,
+            # deep-research 类应判违规, 通用问答类不该。
+            denom = m["grounded"] + m["distorted"]
+            m["parametric"] = m["fabricated"]
+            score = m["grounded"] / denom if denom else None
+        else:
+            score = m["grounding_rate"]
+        return _finish({**base, "score": score, "verdict": None,
                         "metrics": m, "details": results})
 
     # rubric: per-instance 质量条目, 逐条 met/not_met/abstain, 加权聚合

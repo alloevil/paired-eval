@@ -310,10 +310,14 @@ def aggregate_world(results):
 
 
 def aggregate_trajectory(results):
+    """轨迹忠实性聚合。同时给计数与比率 —— grounding policy 需要按计数重算分母
+    (真但无据的 claim 是否算违规, 取决于任务要求全部有据还是允许参数知识)。"""
     n = len(results) or 1
     count = lambda v: sum(r["verdict"] == v for r in results)
     return {
         "n": len(results),
+        "grounded": count("grounded"), "distorted": count("distorted"),
+        "fabricated": count("fabricated"),
         "grounding_rate": count("grounded") / n,
         "distortion_rate": count("distorted") / n,
         "fabrication_rate": count("fabricated") / n,

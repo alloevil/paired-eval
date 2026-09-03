@@ -368,3 +368,29 @@ def reliability_matrix(reports, divergence=0.25, max_span_s=3600, require_interl
         row["divergent"] = row["spread"] >= divergence
         rows.append(row)
     return rows
+
+
+def saturation(reports, max_span_s=3600, require_interleaved=True):
+    """诊断任务集的有效信息量。全系统全轮次同结果的题(恒过 / 恒败)不携带区分信息:
+    McNemar 的有效样本是不一致对, 这类题的贡献恒为 0 —— 加多少道都不会提高功效。
+    这比"任务数不够"更根本: MDE 应按 informative 数而非总题数来读。
+    恒过 = 太容易(或判定器漏勺), 恒败 = 太难(或题目/判定器有毛病), 两者都该换题。
+    返回 {"n_tasks","saturated_pass","saturated_fail","informative","informative_rate","ids"}。"""
+    reliability_matrix(reports, max_span_s=max_span_s,
+                       require_interleaved=require_interleaved)  # 复用三道守卫
+    names = sorted(reports)
+    ids = [r["id"] for r in reports[names[0]]]
+    sat_pass, sat_fail, info = [], [], []
+    for i, tid in enumerate(ids):
+        runs = [bool(x) for nm in names for x in reports[nm][i].get("runs", [])]
+        if runs and all(runs):
+            sat_pass.append(tid)
+        elif runs and not any(runs):
+            sat_fail.append(tid)
+        else:
+            info.append(tid)
+    n = len(ids)
+    return {"n_tasks": n, "saturated_pass": len(sat_pass), "saturated_fail": len(sat_fail),
+            "informative": len(info), "informative_rate": len(info) / n if n else None,
+            "ids": {"saturated_pass": sat_pass, "saturated_fail": sat_fail,
+                    "informative": info}}

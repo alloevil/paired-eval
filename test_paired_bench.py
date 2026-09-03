@@ -265,6 +265,43 @@ def test_pairwise_compare_multiplicity():
 
 
 
+def test_saturation_diagnostic():
+    """饱和题(全系统恒过/恒败)不携带区分信息, 必须与 informative 分开计数 ——
+    否则"我有28道题"会掩盖"其中26道毫无区分力"。"""
+    tasks = pb.ALL_TASKS[:4]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    easy_ids = {tasks[0]["id"], tasks[1]["id"]}
+    hard_id = tasks[2]["id"]
+    split_id = tasks[3]["id"]
+
+    def make(win_split):
+        def model(prompt):
+            t = next(t for t in tasks if t["instruction"] in prompt)
+            if t["id"] in easy_ids:
+                return canon[t["instruction"]]          # 两系统恒过
+            if t["id"] == hard_id:
+                return "错"                              # 两系统恒败
+            return canon[t["instruction"]] if win_split else "错"   # 唯一有信息的题
+        return model
+
+    reps = pb.run_interleaved({"a": make(True), "b": make(False)}, tasks=tasks, n=2)["reports"]
+    s = pb.saturation(reps)
+    assert s["n_tasks"] == 4 and s["saturated_pass"] == 2 and s["saturated_fail"] == 1
+    assert s["informative"] == 1 and abs(s["informative_rate"] - 0.25) < 1e-9
+    assert s["ids"]["informative"] == [split_id]
+    assert set(s["ids"]["saturated_pass"]) == easy_ids
+    assert s["ids"]["saturated_fail"] == [hard_id]
+    # 守卫复用
+    seq = {"a": pb.run_repeated(make(True), tasks=tasks[:1], n=1),
+           "b": pb.run_repeated(make(False), tasks=tasks[:1], n=1)}
+    try:
+        pb.saturation(seq)
+        assert False, "顺序测量应被拒绝"
+    except ValueError:
+        pass
+
+
+
 def test_paired_repeated_survives_drift():
     """交错配对的核心性质: 全局漂移(两侧同时变差)不产生假差异;
     真实单侧差异照常检出; 拒答按轮成对丢弃,配对不破。"""

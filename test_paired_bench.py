@@ -609,6 +609,20 @@ def test_batch_refusal_summary():
     assert clean["refusal_rate"] == {"g1": 0.0, "g2": 0.0}
 
 
+def test_divergence_threshold_boundary():
+    """spread 恰好等于阈值时必须算分歧(>= 语义)。此前所有用例的 spread 都远离阈值,
+    于是 >= 改成 > 在变异测试中存活 —— 边界相等是最容易漏测的一档。"""
+    mk = lambda pid, p: [{"id": pid, "n": 4, "successes": int(p * 4), "pass_at_1": p,
+                          "pass_hat_k": 0.0, "runs": [], "measured_at": 1.0}]
+    reports = {"hi": mk("t", 1.0), "lo": mk("t", 0.75)}   # spread 恰为 0.25
+    row = pb.reliability_matrix(reports, divergence=0.25, require_interleaved=False)[0]
+    assert abs(row["spread"] - 0.25) < 1e-12
+    assert row["divergent"] is True, "spread == divergence 必须判为分歧"
+    # 略低于阈值则不算
+    row2 = pb.reliability_matrix(reports, divergence=0.26, require_interleaved=False)[0]
+    assert row2["divergent"] is False
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

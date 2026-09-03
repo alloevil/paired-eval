@@ -640,6 +640,21 @@ def test_unverifiable_claims_exposed():
     assert out2["unverifiable_claims"] == [] and out2["metrics"]["unverifiable"] == 0
 
 
+def test_wilson_bounds_clamped():
+    """概率区间不得越界, 哪怕越 1e-17: k=0/n=5 的未钳制下界是 -1.1e-17,
+    k=n 的未钳制上界是 1.0000000000000002 —— 下游格式化/比较会被这种值坑到。
+    (这两处钳制曾在变异测试中存活, 即无人断言过。)"""
+    lo, hi = ce.wilson_ci(0, 5)
+    assert lo == 0.0, f"下界必须精确钳到0, 得到 {lo!r}"
+    lo2, hi2 = ce.wilson_ci(5, 5)
+    assert hi2 == 1.0, f"上界必须精确钳到1, 得到 {hi2!r}"
+    # 全域扫描: 任何 (k,n) 都必须落在 [0,1] 且有序
+    for n in range(1, 12):
+        for k in range(n + 1):
+            a, b = ce.wilson_ci(k, n)
+            assert 0.0 <= a <= b <= 1.0, f"k={k},n={n} 区间越界: ({a},{b})"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

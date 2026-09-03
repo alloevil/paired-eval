@@ -29,3 +29,23 @@ run "corroborate: 复核判定反转"           claim_eval.py 'if v2["verdict"] 
 run "rubric: 分母漏掉 not_met"            rubric_eval.py "denom = met_w + not_w" "denom = met_w"
 run "parse_number: 百分号乘100"           answer_match.py "return value / 100.0" "return value * 100.0"
 run "trajectory: 加权退化"                claim_eval.py "weighted_grounding_rate=wsum(\"grounded\") / total_w" "weighted_grounding_rate=count(\"grounded\") / n"
+run "wilson: 下界钳制去掉"        claim_eval.py "return (max(0.0, center - half), min(1.0, center + half))" "return (center - half, min(1.0, center + half))"
+run "wilson: 上界钳制去掉"        claim_eval.py "return (max(0.0, center - half), min(1.0, center + half))" "return (max(0.0, center - half), center + half)"
+run "mcnemar: n==0 返回0"         claim_eval.py "if n == 0:
+        return 1.0" "if n == 0:
+        return 0.0"
+run "holm: 去掉单调强制"          claim_eval.py "running = max(running, min(1.0, (n - rank) * pvalues[i]))" "running = min(1.0, (n - rank) * pvalues[i])"
+run "divergence: >= 改 >"         paired_bench.py 'row["divergent"] = row["spread"] >= divergence' 'row["divergent"] = row["spread"] > divergence'
+run "rotation: shift 方向反转"     paired_bench.py "order = names[shift:] + names[:shift]" "order = names[:shift] + names[shift:]"
+run "derived: 容差方向反转"        claim_eval.py "ok = abs(value - claimed) <= rel_tol * max(abs(value), abs(claimed), 1e-9)" "ok = abs(value - claimed) >= rel_tol * max(abs(value), abs(claimed), 1e-9)"
+run "safe_verdict: 无fallback也降级" claim_eval.py "if fallback is not None:" "if fallback is None:"
+run "boxed: depth 判定改错"        answer_match.py "if depth == 0:
+                return text[start:j], i" "if depth >= 0:
+                return text[start:j], i"
+run "grade: no_slot/blank 反转"    answer_match.py 'reason = "blank" if not str(response).strip() else "no_slot"' 'reason = "no_slot" if not str(response).strip() else "blank"'
+run "meter: chars_in 少算system"   claim_eval.py "self.llm_chars_in += len(prompt) + len(system)" "self.llm_chars_in += len(prompt)"
+run "throttled_pmap: 保序丢失"     claim_eval.py "return list(ex.map(fn, xs))" "return list(reversed(list(ex.map(fn, xs))))"
+run "saturation: 恒败归入有信息"   paired_bench.py "elif runs and not any(runs):
+            sat_fail.append(tid)" "elif False:
+            sat_fail.append(tid)"
+run "screen: 跳过复核阶段"         paired_bench.py "if confirm_n is None or not flagged:" "if True:"

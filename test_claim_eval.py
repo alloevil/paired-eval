@@ -383,6 +383,26 @@ def test_mcnemar_exact():
     except ValueError:
         pass
 
+def test_holm_adjust():
+    """闭式核对: 排序后 (n-rank)*p, 强制单调不减, 封顶1。"""
+    assert ce.holm_adjust([]) == []
+    assert ce.holm_adjust([0.02]) == [0.02], "单个检验不校正"
+    # [0.01,0.04,0.03]: 0.01*3=0.03 -> 0.03*2=0.06 -> max(0.06,0.04*1)=0.06
+    got = ce.holm_adjust([0.01, 0.04, 0.03])
+    assert all(abs(g - e) < 1e-12 for g, e in zip(got, [0.03, 0.06, 0.06])), got
+    assert ce.holm_adjust([0.5, 0.6]) == [1.0, 1.0], "封顶1"
+    adj = ce.holm_adjust([0.001, 0.9, 0.9])
+    assert adj[0] < 0.05 <= adj[1], "强效应经校正仍显著,弱的被压住"
+    assert all(a >= b for a, b in zip(ce.holm_adjust([0.01, 0.02, 0.03]),
+                                      [0.01, 0.02, 0.03])), "校正后不小于原值"
+    try:
+        ce.holm_adjust([0.5, 1.5])
+        assert False, "越界p应拒绝"
+    except ValueError:
+        pass
+
+
+
 
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

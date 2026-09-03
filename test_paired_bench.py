@@ -235,6 +235,36 @@ def test_discordant_readout():
 
 
 
+def test_pairwise_compare_multiplicity():
+    """N系统两两比较: 双读数 + 各家族独立 Holm 校正; 守卫复用。"""
+    tasks = pb.ALL_TASKS[:6]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    bad = lambda p: "错误输出"
+    reps = pb.run_interleaved({"g1": good, "g2": good, "b1": bad}, tasks=tasks, n=2)["reports"]
+    rows = pb.pairwise_compare(reps)
+    assert len(rows) == 3, "3系统 -> 3对"
+    assert [abs(r["mean_diff"]) for r in rows] == sorted(
+        (abs(r["mean_diff"]) for r in rows), reverse=True), "按效应量降序"
+    by = {frozenset((r["a"], r["b"])): r for r in rows}
+    gg = by[frozenset(("g1", "g2"))]
+    assert gg["mean_diff"] == 0.0 and gg["a_only"] == gg["b_only"] == 0
+    assert gg["mcnemar_p"] == 1.0 and gg["p_mcnemar_holm"] == 1.0
+    gb = by[frozenset(("b1", "g1"))]
+    assert abs(gb["mean_diff"]) == 1.0 and gb["a_only"] + gb["b_only"] == 12  # 6题×2轮
+    assert gb["mcnemar_p"] < 1e-3 and gb["p_mcnemar_holm"] >= gb["mcnemar_p"], "校正只会变大"
+    assert gb["p_mcnemar_holm"] < 0.05, "真实强效应经校正仍显著"
+    # 守卫复用: 顺序测量的报告应被拒
+    seq = {"a": pb.run_repeated(good, tasks=tasks[:1], n=2),
+           "b": pb.run_repeated(bad, tasks=tasks[:1], n=2)}
+    try:
+        pb.pairwise_compare(seq)
+        assert False, "顺序测量应被拒绝"
+    except ValueError:
+        pass
+
+
+
 def test_paired_repeated_survives_drift():
     """交错配对的核心性质: 全局漂移(两侧同时变差)不产生假差异;
     真实单侧差异照常检出; 拒答按轮成对丢弃,配对不破。"""

@@ -262,6 +262,24 @@ def mcnemar_exact(n_a_only, n_b_only):
     return min(1.0, 2 * tail)
 
 
+def holm_adjust(pvalues):
+    """Holm-Bonferroni 逐步降幂校正(按原顺序返回校正后 p 值)。
+    k 个系统两两比较有 k(k-1)/2 次检验, 不校正则"比了十对庆祝那一对显著的"必然发生。
+    比 Bonferroni 更有功效且同样严格控制 family-wise error rate; 强制单调不减。"""
+    if not pvalues:
+        return []
+    if any(not 0.0 <= p <= 1.0 for p in pvalues):
+        raise ValueError("p 值必须落在 [0,1]")
+    n = len(pvalues)
+    order = sorted(range(n), key=lambda i: pvalues[i])
+    adjusted = [0.0] * n
+    running = 0.0
+    for rank, i in enumerate(order):
+        running = max(running, min(1.0, (n - rank) * pvalues[i]))
+        adjusted[i] = running
+    return adjusted
+
+
 def pass_hat_k(successes, n, k):
     """τ-bench 式 pass^k 的无偏估计: 从 n 次独立运行(其中 successes 次通过)中
     任取 k 次全部通过的概率 = C(s,k)/C(n,k)。衡量可靠性而非能力上限:

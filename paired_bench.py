@@ -290,6 +290,40 @@ def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,
     return {"reports": reports, "dropped": dropped}
 
 
+def pairwise_compare(reports, max_span_s=3600, require_interleaved=True):
+    """N 系统两两比较, 含多重比较校正。reports 应来自 run_interleaved。
+    k 个系统产生 k(k-1)/2 次检验 —— 不校正就是"比了十对庆祝那一对显著的"。
+    每对给两个读数: 逐题均值的置换检验, 逐轮不一致对的 McNemar 精确检验;
+    两个家族各自独立做 Holm 校正(p_perm_holm / p_mcnemar_holm)。
+    守卫与 reliability_matrix 同源(任务集一致/测量窗口/交错性)。
+    返回按 |mean_diff| 降序的 [{a,b,mean_diff,p_perm,p_perm_holm,a_only,b_only,
+    mcnemar_p,p_mcnemar_holm}]。"""
+    reliability_matrix(reports, max_span_s=max_span_s,
+                       require_interleaved=require_interleaved)  # 复用三道守卫
+    names = sorted(reports)
+    pairs = [(names[i], names[j]) for i in range(len(names)) for j in range(i + 1, len(names))]
+    if not pairs:
+        raise ValueError("至少需要两个系统")
+    out = []
+    for a, b in pairs:
+        va = [r["pass_at_1"] for r in reports[a]]
+        vb = [r["pass_at_1"] for r in reports[b]]
+        cmp_ = ce.paired_compare(va, vb)
+        a_only = b_only = 0
+        for ra, rb in zip(reports[a], reports[b]):
+            for xa, xb in zip(ra.get("runs", []), rb.get("runs", [])):
+                a_only += bool(xa) and not bool(xb)
+                b_only += bool(xb) and not bool(xa)
+        out.append({"a": a, "b": b, "mean_diff": cmp_["mean_diff"],
+                    "p_perm": cmp_["p_value"], "diff_ci": cmp_["diff_ci"],
+                    "a_only": a_only, "b_only": b_only,
+                    "mcnemar_p": ce.mcnemar_exact(a_only, b_only)})
+    for key, adj in (("p_perm", "p_perm_holm"), ("mcnemar_p", "p_mcnemar_holm")):
+        for row, p in zip(out, ce.holm_adjust([r[key] for r in out])):
+            row[adj] = p
+    return sorted(out, key=lambda r: -abs(r["mean_diff"]))
+
+
 def reliability_matrix(reports, divergence=0.25, max_span_s=3600, require_interleaved=True):
     """多系统可靠性透视: 每题一行,各系统 pass@1 并排,
     spread = 跨系统最大差距, spread >= divergence 标为分歧项(真实能力差 或 题目歧义,人工分诊)。

@@ -177,6 +177,27 @@ def test_wrong_probes_rejected():
 
 
 
+def test_measurement_window_guard():
+    """可靠性跨会话漂移(实测 0/8 -> 8/8), 故不同时间窗的报告不许并排。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] == "if-upper"]
+    fresh = pb.run_repeated(lambda p: "HELLO WORLD", tasks=tasks, n=2)
+    assert isinstance(fresh[0]["measured_at"], float), "报告必须带测量时戳"
+    same_window = pb.reliability_matrix({"a": fresh, "b": fresh})
+    assert len(same_window) == 1 and not same_window[0]["divergent"]
+    stale = [dict(r, measured_at=r["measured_at"] - 7200) for r in fresh]
+    try:
+        pb.reliability_matrix({"a": fresh, "b": stale})
+        assert False, "跨2小时的报告并排应报错"
+    except ValueError as e:
+        assert "漂移" in str(e)
+    assert pb.reliability_matrix({"a": fresh, "b": stale}, max_span_s=None), "可显式关闭"
+    # 合成报告(无时戳)不受影响: 向后兼容
+    synth = [{"id": "if-upper", "n": 8, "successes": 8, "pass_at_1": 1.0,
+              "pass_hat_k": 1.0, "runs": []}]
+    assert pb.reliability_matrix({"a": synth, "b": synth})
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

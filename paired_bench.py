@@ -145,7 +145,10 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
     """单模型逐题重复 n 次: 把能力(pass@1)与可靠性(pass^k)剥开。
     单发配对会把"抛硬币"误标成"能力缺口"(本仓库有真实案例: 某项连败2次,
     n=8 复核实为 4/8) —— run_paired 发现的分歧项必须用本函数复核后才许下结论。
-    拒答/判定器异常按失败计。返回逐题 {"id","n","successes","pass_at_1","pass_hat_k","runs"}。"""
+    跨会话漂移警告: 本仓库实测同一模型同一题 n=8 得 0/8, 另一时间窗重测得 8/8 ——
+    pass^k 只在本次测量窗口内有效, 跨窗口比较必须重测基线, 故每份报告带 measured_at 戳。
+    拒答/判定器异常按失败计。返回逐题 {"id","n","successes","pass_at_1","pass_hat_k",
+    "runs","responses","measured_at"}。"""
     report = []
     for t in tasks:
         runs, resps = [], []
@@ -161,18 +164,27 @@ def run_repeated(model, tasks=ALL_TASKS, n=8, k=3,
         report.append({"id": t["id"], "n": n, "successes": s,
                        "pass_at_1": s / n,
                        "pass_hat_k": ce.pass_hat_k(s, n, min(k, n)),
-                       "runs": runs, "responses": resps})
+                       "runs": runs, "responses": resps,
+                       "measured_at": time.time()})
     return report
 
 
-def reliability_matrix(reports, divergence=0.25):
+def reliability_matrix(reports, divergence=0.25, max_span_s=3600):
     """多系统 run_repeated 报告透视: 每题一行,各系统 pass@1 并排,
     spread = 跨系统最大差距, spread >= divergence 标为分歧项。
-    分歧项是两类信号之一: 真实能力差(可能非单调 —— 本仓库实测过
-    smol 8/8 / default 0/8 / slow 7/8 的反序洞), 或题目本身有歧义,都值得人工看一眼。
-    reports: {"系统名": run_repeated 返回值}; 各系统任务集必须一致。"""
+    分歧项是两类信号之一: 真实能力差(可能非单调), 或题目本身有歧义,都值得人工看一眼。
+    reports: {"系统名": run_repeated 返回值}; 各系统任务集必须一致。
+    measured_at 齐备时校验测量窗口跨度 <= max_span_s(默认1小时): 可靠性会跨会话漂移,
+    把不同时间窗的报告并排等于混用尺子(与 summarize 的混指纹拒绝同源)。max_span_s=None 关闭。"""
     if not reports:
         raise ValueError("reports 不能为空")
+    stamps = [r["measured_at"] for rep in reports.values() for r in rep if "measured_at" in r]
+    total = sum(len(rep) for rep in reports.values())
+    if max_span_s is not None and len(stamps) == total and stamps:
+        span = max(stamps) - min(stamps)
+        if span > max_span_s:
+            raise ValueError(f"报告测量窗口跨度 {span:.0f}s 超过 {max_span_s}s: "
+                             "可靠性跨会话漂移,请重测基线或显式设 max_span_s=None")
     names = sorted(reports)
     ids = [r["id"] for r in reports[names[0]]]
     for nm in names[1:]:

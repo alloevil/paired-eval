@@ -538,6 +538,25 @@ def test_trajectory_selfcheck():
     assert g3["false_positives"] == 1 and g3["fp_rate"] == 1.0
 
 
+def test_unconfirmed_contradictions_surfaced():
+    """复核降级的单源矛盾必须在指标层可见 —— 融进 insufficient 就等于信号消失。"""
+    claim_s = _claim("S单源矛盾", "S", "core", "qS")
+    claim_a = _claim("A核心事实", "A", "core", "qA")
+    r_unconf = ce.verify_world(claim_s, mock_llm, mock_search, corroborate=True)
+    r_ok = ce.verify_world(claim_a, mock_llm, mock_search)
+    assert r_unconf["verdict"] == "insufficient" and r_unconf["corroborated"] is False
+    m = ce.aggregate_world([r_unconf, r_ok])
+    assert m["insufficient"] == 1 and m["unconfirmed_contradictions"] == 1, \
+        "降级的矛盾既计入 insufficient 也单列"
+    # 普通 insufficient(压根没证据)不该被算成未确认矛盾
+    claim_d = _claim("D需重试的事实", "D", "supporting", "qD")
+    r_plain = ce.verify_world(claim_d, mock_llm, mock_search, max_retries=0)
+    m2 = ce.aggregate_world([r_plain])
+    assert m2["insufficient"] == 1 and m2["unconfirmed_contradictions"] == 0, \
+        "无证据 与 单源矛盾未确认 是两种不同诊断"
+
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

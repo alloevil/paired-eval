@@ -163,7 +163,10 @@ def extract_claims(text, llm):
 def verify_world(claim, llm, search, max_retries=1, corroborate=False):
     """Stage 4: 检索 + 三值判定; insufficient 时 query 重构重试。
     corroborate=True: contradicted 必须换角度二次检索复核 —— 两轮都矛盾才定罪,
-    复核不一致降级为 insufficient(来源冲突)。单一来源定罪是在测检索运气,生产建议开启。"""
+    复核不一致降级为 insufficient 并标 corroborated=False(来源冲突,不是无证据)。
+    实测权衡(同一门禁 fixture): False -> recall 2/2, 单源即定罪, 会冤判口径分散的数字;
+    True -> recall 1/2, 营收类数字二次检索无法独立确认而降级。故按用途选:
+    生产打分要查准用 True; 门禁自检要查全用 False(selfcheck 默认即 False)。"""
     query = claim["search_query"]
     for attempt in range(max_retries + 1):
         evidence = str(search(query))[:EVIDENCE_CAP]
@@ -294,14 +297,19 @@ def pass_hat_k(successes, n, k):
 
 
 def aggregate_world(results):
+    """开放世界聚合。unconfirmed_contradictions 单列: 复核模式下被降级的单源矛盾
+    会融进 insufficient, 那样"3条claim单源矛盾但未获确认"这个信号就消失了 ——
+    它与"完全没证据"是不同的诊断(前者指向口径冲突或检索覆盖不足, 值得人工看)。"""
     sup = [r for r in results if r["verdict"] == "supported"]
     con = [r for r in results if r["verdict"] == "contradicted"]
     ins = [r for r in results if r["verdict"] == "insufficient"]
+    unconfirmed = [r for r in ins if r.get("corroborated") is False]
     wp = lambda rs: sum(WEIGHTS[r["importance"]] for r in rs)
     denom, wdenom = len(sup) + len(con), wp(sup) + wp(con)
     return {
         "n": len(results), "supported": len(sup), "contradicted": len(con),
         "insufficient": len(ins),
+        "unconfirmed_contradictions": len(unconfirmed),
         "precision": len(sup) / denom if denom else None,
         "precision_ci": wilson_ci(len(sup), denom),
         "weighted_precision": wp(sup) / wdenom if wdenom else None,

@@ -5,11 +5,15 @@
 model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 -> 该题成对丢弃)。
 
 入口:
-    make_model(call)                    # 裸调用适配: 异常有界重试, 耗尽转 None
-    run_paired(model_a, model_b, tasks) # 双侧作答 -> 判定 -> 成对丢弃 -> 置换检验
-    run_repeated(model, tasks, n=8)     # 分歧项复核: pass@1(能力) vs pass^k(可靠性)
+    make_model(call)                          # 裸调用适配: 异常有界重试, 耗尽转 None
+    run_paired(a, b, tasks)                   # 单发配对: 逐题交替先后 -> 判定 -> 置换检验
+    run_repeated(model, tasks, n=8)           # 单系统复核: pass@1(能力) vs pass^k(可靠性)
+    run_paired_repeated(a, b, tasks, n=8)     # 两系统交错重复(ABBA) + 逐轮不一致对/McNemar
+    run_interleaved({name: model}, tasks, n)  # N系统交错重复(顺序轮转) -> 喂 reliability_matrix
+    reliability_matrix(reports)               # 跨系统逐题透视 + 分歧标记(三道守卫)
 判定器故意严格(strip 后精确比较): 测的就是指令遵循,宽松即失真。
-纪律: run_paired 的分歧项必须经 run_repeated 复核才许下结论(有误标前科)。
+纪律: 单发分歧项必须经 run_repeated 复核才许下结论(有误标前科);
+多系统比较必须走交错路径, 逐系统分别 run_repeated 再并排会被 reliability_matrix 拒绝。
 """
 
 import time
@@ -228,7 +232,11 @@ def run_paired_repeated(model_a, model_b, tasks=ALL_TASKS, n=8, k=3,
         raise ValueError("全部任务被丢弃,无可比数据")
     compare = ce.paired_compare([r["a_pass_at_1"] for r in rows],
                                 [r["b_pass_at_1"] for r in rows])
-    return {"rows": rows, "dropped": dropped, "compare": compare}
+    a_only = sum(a and not b for r in rows for a, b in r["per_rep"])
+    b_only = sum(b and not a for r in rows for a, b in r["per_rep"])
+    return {"rows": rows, "dropped": dropped, "compare": compare,
+            "discordant": {"a_only": a_only, "b_only": b_only,
+                           "mcnemar_p": ce.mcnemar_exact(a_only, b_only)}}
 
 
 def run_interleaved(models, tasks=ALL_TASKS, n=8, k=3,

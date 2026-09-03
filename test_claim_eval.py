@@ -367,6 +367,23 @@ def test_meter_thread_safety():
     assert snap["llm_chars_in"] == 2000 * 2 and snap["llm_chars_out"] == 2000 * len(str({"ok": 1}))
 
 
+def test_mcnemar_exact():
+    """闭式核对: 双侧 = 2 * Bin(n,0.5) 下尾, 上限1。"""
+    assert ce.mcnemar_exact(0, 0) == 1.0, "无不一致对 = 无方向证据"
+    assert abs(ce.mcnemar_exact(0, 5) - 2 * (1 / 32)) < 1e-12       # 2*C(5,0)/2^5
+    assert abs(ce.mcnemar_exact(5, 0) - 2 * (1 / 32)) < 1e-12, "对称"
+    assert abs(ce.mcnemar_exact(1, 9) - 2 * (11 / 1024)) < 1e-12    # 2*(C(10,0)+C(10,1))/2^10
+    assert ce.mcnemar_exact(3, 3) == 1.0, "对称不一致对: p 封顶1"
+    assert ce.mcnemar_exact(0, 1) == 1.0, "单个不一致对不足以显著"
+    # 效应越干净 p 越小; 一致对不参与(不作为参数存在)
+    assert ce.mcnemar_exact(0, 20) < ce.mcnemar_exact(0, 5)
+    try:
+        ce.mcnemar_exact(-1, 2)
+        assert False, "负计数应拒绝"
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -16,6 +16,7 @@
     paired_compare(scores_a, scores_b)    # 同任务配对 A/B: 置换检验 p 值 + bootstrap CI
     required_tasks(p_win, p_loss)         # 功效分析: 要多少任务才能检出这个差距
     pass_hat_k(successes, n, k)           # 可靠性: n 次运行中任取 k 次全过的概率
+    mcnemar_exact(n_a_only, n_b_only)     # 二值配对: 不一致对的精确双侧检验
 适配:
     Meter / make_resilient / throttled_pmap   # 成本计量 / 有界重试 / 限并发
 """
@@ -244,6 +245,21 @@ def wilson_ci(k, n, z=1.96):
     center = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
     return (max(0.0, center - half), min(1.0, center + half))
+
+
+def mcnemar_exact(n_a_only, n_b_only):
+    """二值配对数据的 McNemar 精确检验(双侧): 只看不一致对 —— A对B错 n_a_only 次,
+    A错B对 n_b_only 次。H0 下不一致对服从 Bin(n, 0.5), 精确二项尾概率 ×2 (上限1)。
+    适用场景: 逐轮交错配对产出的二值结果, 比压成逐题均值再做置换检验保留更多信息;
+    小样本下给出精确 p 值, 无需模拟。一致对(两侧同对/同错)不携带方向信息,故被忽略。"""
+    if n_a_only < 0 or n_b_only < 0:
+        raise ValueError("不一致对计数不能为负")
+    n = n_a_only + n_b_only
+    if n == 0:
+        return 1.0   # 无不一致对: 数据不含任何方向证据
+    lo = min(n_a_only, n_b_only)
+    tail = sum(math.comb(n, i) for i in range(lo + 1)) / (2 ** n)
+    return min(1.0, 2 * tail)
 
 
 def pass_hat_k(successes, n, k):

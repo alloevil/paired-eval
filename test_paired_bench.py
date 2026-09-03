@@ -219,6 +219,22 @@ def test_sequential_measurement_rejected():
 
 
 
+def test_discordant_readout():
+    """逐轮不一致对 + McNemar: 逐题均值检验之外的第二个读数(保留逐轮结构)。"""
+    tasks = [t for t in pb.ALL_TASKS if t["id"] in ("if-upper", "if-pi8")]
+    canon = {t["instruction"]: t["canonical"] for t in tasks}
+    good = lambda p: canon[[k for k in canon if k in p][0]]
+    bad = lambda p: "错"
+    out = pb.run_paired_repeated(good, bad, tasks=tasks, n=3)
+    d = out["discordant"]
+    assert d["a_only"] == 6 and d["b_only"] == 0, "2题×3轮全为A独对"
+    assert abs(d["mcnemar_p"] - 2 * (1 / 64)) < 1e-12, "2*C(6,0)/2^6"
+    # 两侧同强: 无不一致对 -> p=1
+    out2 = pb.run_paired_repeated(good, good, tasks=tasks, n=2)
+    assert out2["discordant"] == {"a_only": 0, "b_only": 0, "mcnemar_p": 1.0}
+
+
+
 def test_paired_repeated_survives_drift():
     """交错配对的核心性质: 全局漂移(两侧同时变差)不产生假差异;
     真实单侧差异照常检出; 拒答按轮成对丢弃,配对不破。"""

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="paired-eval: two bars with confidence intervals">
+  <!-- 两根柱子 = 两个被比较的系统; 每根柱子上的须 = 置信区间; 底线 = 同一把尺子 -->
+  <line x1="7" y1="52" x2="57" y2="52" stroke="#8b95a5" stroke-width="2" stroke-linecap="round"/>
+  <rect x="13" y="26" width="15" height="26" rx="2.5" fill="#3b82f6"/>
+  <rect x="36" y="15" width="15" height="37" rx="2.5" fill="#f59e0b"/>
+  <g stroke="#8b95a5" stroke-width="2" stroke-linecap="round">
+    <line x1="20.5" y1="17" x2="20.5" y2="35"/>
+    <line x1="16.5" y1="17" x2="24.5" y2="17"/>
+    <line x1="16.5" y1="35" x2="24.5" y2="35"/>
+    <line x1="43.5" y1="7"  x2="43.5" y2="23"/>
+    <line x1="39.5" y1="7"  x2="47.5" y2="7"/>
+    <line x1="39.5" y1="23" x2="47.5" y2="23"/>
+  </g>
+</svg>

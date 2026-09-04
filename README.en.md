@@ -1,13 +1,15 @@
-# paired-eval
-
-Compare two LLM systems — different models, prompts, scaffolds, or agent strategies — and learn **which is better, how reliable that conclusion is, and whether you have enough samples.**
-
-[中文](README.md) · [Docs](docs/README.md) · [Changelog](CHANGELOG.md)
-
-[![CI](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
-[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
+</p>
+<h1 align="center">paired-eval</h1>
+<p align="center"><em>Compare two LLM systems — different models, prompts, scaffolds, or agent strategies — and learn which is better, how reliable that conclusion is, and whether you have enough samples.</em></p>
+<p align="center">
+  <a href="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml"><img src="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="Dependencies: none"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+<p align="center"><a href="https://alloevil.github.io/paired-eval/">Website</a> · <a href="README.md">中文</a> · <a href="docs/README.md">Docs</a> · <a href="CHANGELOG.md">Changelog</a></p>
 
 Pure standard-library Python ≥ 3.9, no dependencies. You inject the model as any `call(prompt) -> str`; no vendor binding.
 

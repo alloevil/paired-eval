@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems</title>
+<meta name="description" content="Paired A/B evaluation for LLM systems with honest statistics: is the difference real, and is the sample big enough? Zero dependencies, Python 3.9+.">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<style>
+:root{--bg:#ffffff;--fg:#1f2328;--muted:#59636e;--line:#d0d7de;--card:#f6f8fa;--accent:#3b82f6;--accent2:#f59e0b;--code:#0d1117;--codefg:#e6edf3}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#30363d;--card:#161b22;--code:#010409;--codefg:#e6edf3}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,"PingFang SC","Noto Sans CJK SC",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+[data-lang="zh"] .en,[data-lang="en"] .zh{display:none}
+header.hero{padding:64px 0 40px;text-align:center;border-bottom:1px solid var(--line)}
+.hero img{width:88px;height:88px}
+.hero h1{margin:12px 0 4px;font-size:40px;letter-spacing:-.5px}
+.hero .tagline{margin:0 auto;max-width:640px;font-size:19px;color:var(--muted)}
+.actions{margin:24px 0 8px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:hover{text-decoration:none;filter:brightness(1.05)}
+button.lang{cursor:pointer;font:inherit}
+pre{margin:0;padding:14px 16px;border-radius:10px;background:var(--code);color:var(--codefg);overflow:auto;font:13.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+pre.install{display:inline-block;margin-top:18px;padding:10px 18px;font-size:15px}
+.meta{color:var(--muted);font-size:14px;margin-top:14px}
+section{padding:40px 0;border-bottom:1px solid var(--line)}
+section h2{font-size:26px;margin:0 0 6px}
+section .lead{color:var(--muted);margin:0 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card h3{margin:0 0 6px;font-size:16px}.card p{margin:0;color:var(--muted);font-size:14.5px}
+table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.read{margin-top:14px;color:var(--muted);font-size:15px}
+.bar{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+footer{padding:28px 0 48px;color:var(--muted);font-size:14px;text-align:center}
+code.inl{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.92em}
+</style>
+</head>
+<body data-lang="zh">
+<header class="hero"><div class="wrap">
+<img src="assets/logo.svg" alt="paired-eval" width="88" height="88">
+<h1>paired-eval</h1>
+<p class="zh tagline">比较两个 LLM 系统——不同的模型、提示、脚手架或 agent 策略——哪个更好，结论有多可靠，样本够不够。</p><p class="en tagline">Compare two LLM systems — models, prompts, scaffolds or agent strategies — and learn which is better, how reliable that is, and whether you have enough samples.</p>
+<div class="actions">
+<a class="btn primary" href="https://github.com/alloevil/paired-eval">GitHub</a>
+<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.md"><span class="zh">README</span><span class="en">README（中文）</span></a>
+<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.en.md"><span class="zh">English README</span><span class="en">README</span></a>
+<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/docs/README.md"><span class="zh">文档</span><span class="en">Docs</span></a>
+<button class="btn lang" id="lang" type="button">English</button>
+</div>
+<pre class="install"><code>pip install git+https://github.com/alloevil/paired-eval.git</code></pre>
+<p class="meta">v0.2.0 · MIT · Python ≥ 3.9 · <span class="zh">零第三方依赖 · 模型调用由你注入</span><span class="en">no third-party dependencies · you inject the model call</span></p>
+</div></header>
+
+<main class="wrap">
+<section id="demo">
+<h2><span class="zh">十秒钟看效果</span><span class="en">Ten seconds</span></h2>
+<p class="lead"><span class="zh">两个桩系统在 4 道内置格式题上做配对 A/B，不需要任何 API。下面是真实输出（由测试与当前代码逐行比对）。</span><span class="en">Two stub systems run a paired A/B on 4 built-in format tasks, no API needed. Actual output below (a test keeps it identical to the current code).</span></p>
+<pre class="zh"><code>$ python3 paired_eval.py
+有效样本: 2/4 题有信息(恒过 2, 恒败 0)
+拒答: {&#x27;strict&#x27;: 0, &#x27;bare&#x27;: 0}
+触顶(1.000): strict —— 该系统无余量, 它作为参照时效应会被压缩
+bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | 逐题p=0.506 逐轮McNemar=0.00781 Holm=0.00781 | 不一致对 0:8 集中度=0.50 | 显著: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)</code></pre>
+<pre class="en"><code>$ python3 paired_eval.py --lang en
+informative sample: 2/4 tasks informative (always-pass 2, always-fail 0)
+refusals: {&#x27;strict&#x27;: 0, &#x27;bare&#x27;: 0}
+at ceiling (1.000): strict — no headroom; effects measured against it as the reference are compressed
+bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNemar=0.00781 Holm=0.00781 | discordant 0:8 concentration=0.50 | significant: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)</code></pre>
+<p class="read"><span class="zh">两题两系统全对、不携带信息（有效样本 2/4）；8 个不一致对全部偏向 strict，分布在 2 题上（集中度 0.50，非单题异常）；逐题置换 p=0.506 是因为只有 2 道有信息题，它的最小可能 p 就是 0.5——而逐轮 McNemar 用上全部 16 个配对单元。末段是可直接写进报告的结论。</span><span class="en">Two tasks were solved by both systems every time and carry no information (informative sample 2/4); all 8 discordant pairs favour strict, spread over 2 tasks (concentration 0.50); the per-task permutation p is 0.506 because with 2 informative tasks its minimum attainable p is 0.5 — per-round McNemar uses all 16 paired units. The last clause is a verdict you can paste into a report.</span></p>
+</section>
+
+<section id="features">
+<h2><span class="zh">特性</span><span class="en">Features</span></h2>
+<div class="grid">
+<div class="card"><h3><span class="zh">同题交错重复、逐题配对</span><span class="en">Interleaved repeats, paired per task</span></h3><p><span class="zh">不是两个独立均值的差；报效应量与 bootstrap 区间。</span><span class="en">Not a difference of independent means; effect size with a bootstrap interval.</span></p></div>
+<div class="card"><h3><span class="zh">配对精确检验</span><span class="en">Exact paired tests</span></h3><p><span class="zh">McNemar（二值）、符号翻转置换（连续分），Holm 校正；不假设正态。</span><span class="en">McNemar (binary), sign-flip permutation (continuous), Holm correction; no normality assumption.</span></p></div>
+<div class="card"><h3><span class="zh">四种结论，不是一个 p 值</span><span class="en">Four verdicts, not one p-value</span></h3><p><span class="zh">显著 / 有界的 null / 无信息 / 检验无力——缺的是不一致对还是单元，处方不同。</span><span class="en">Significant / bounded null / uninformative / powerless — and whether what&#x27;s missing is discordant pairs or units.</span></p></div>
+<div class="card"><h3><span class="zh">有效样本与触顶诊断</span><span class="en">Informative-sample and ceiling diagnostics</span></h3><p><span class="zh">哪些题没在贡献信息、哪个系统满分导致效应被压缩。</span><span class="en">Which tasks contribute nothing; which system&#x27;s perfect score compresses the effect.</span></p></div>
+<div class="card"><h3><span class="zh">事前样本量规划</span><span class="en">Sample-size planning</span></h3><p><span class="zh">required_tasks / required_pairs 内部真跑将要使用的检验，不用闭式近似。</span><span class="en">required_tasks / required_pairs run the very test that will be used, not a closed-form approximation.</span></p></div>
+<div class="card"><h3><span class="zh">可组合的验证器</span><span class="en">Composable verifiers</span></h3><p><span class="zh">精确匹配 → 程序判定 → 检索核实 → agent 轨迹忠实性 → rubric（自带 canary）。</span><span class="en">Exact match → programmatic check → retrieval → agent-trajectory faithfulness → rubric (with a canary).</span></p></div>
+</div>
+</section>
+
+<section id="verdicts">
+<h2><span class="zh">四种结论，而不是一个 p 值</span><span class="en">Four verdicts, not one p-value</span></h2>
+<p class="lead"><span class="zh">“p > 0.05” 有三种完全不同的含义，处方各异。<code class='inl'>interpret()</code> 把每次比较翻译成其中一种：</span><span class="en">“p > 0.05” means three very different things with different remedies. <code class='inl'>interpret()</code> translates every comparison into one of these:</span></p>
+<table><tbody>
+<tr><td><strong><span class="zh">显著</span><span class="en">significant</span></strong></td><td><span class="zh">效应量与区间，可直接写进报告。</span><span class="en">Effect size and interval, ready for a report.</span></td></tr>
+<tr><td><strong><span class="zh">有界的 null</span><span class="en">bounded null</span></strong></td><td><span class="zh">未检出差异，但说清能排除多大效应（MDE）。</span><span class="en">No difference detected — with the effect size this design rules out (MDE).</span></td></tr>
+<tr><td><strong><span class="zh">无信息</span><span class="en">uninformative</span></strong></td><td><span class="zh">样本太小，任何效应都检不出；不能当作『无差异』的证据。</span><span class="en">Too small to detect anything; not evidence of &#x27;no difference&#x27;.</span></td></tr>
+<tr><td><strong><span class="zh">检验无力</span><span class="en">powerless</span></strong></td><td><span class="zh">p 有地板：不一致对/非零差值对不够，效应再大也到不了显著，并说明缺多少。</span><span class="en">The p-value has a floor: too few discordant or nonzero-difference pairs; no effect could reach significance. Says how many are missing.</span></td></tr>
+</tbody></table>
+</section>
+
+<section id="usage">
+<h2><span class="zh">用你自己的系统和任务</span><span class="en">Your own systems and tasks</span></h2>
+<p class="lead"><span class="zh">一个任务 = 指令 + 程序判定器 + 一个合法输出样例。任何 <code class='inl'>call(prompt) -&gt; str</code> 都能接上；<code class='inl'>make_model</code> 负责有界重试，持续失败转为“拒答”成对丢弃。</span><span class="en">A task = an instruction + a programmatic checker + one valid output. Any <code class='inl'>call(prompt) -&gt; str</code> plugs in; <code class='inl'>make_model</code> adds bounded retries and drops persistent failures pairwise as refusals.</span></p>
+<pre class="zh"><code>import paired_eval as pe
+
+tasks = [
+    {&quot;id&quot;: &quot;date-iso&quot;, &quot;instruction&quot;: &quot;把 2024年3月5日 写成 ISO 8601 日期, 只输出日期&quot;,
+     &quot;check&quot;: lambda r: r.strip() == &quot;2024-03-05&quot;, &quot;canonical&quot;: &quot;2024-03-05&quot;},
+    {&quot;id&quot;: &quot;json-pair&quot;, &quot;instruction&quot;: &#x27;输出 JSON 对象 {&quot;a&quot;: 1}, 不要其他内容&#x27;,
+     &quot;check&quot;: lambda r: r.strip() == &#x27;{&quot;a&quot;: 1}&#x27;, &quot;canonical&quot;: &#x27;{&quot;a&quot;: 1}&#x27;},
+]
+systems = {&quot;strict&quot;: pe.make_model(call_strict), &quot;bare&quot;: pe.make_model(call_bare)}   # 任何 call(prompt) -&gt; str
+
+run = pe.run_interleaved(systems, tasks=tasks, n=8, prompt_prefix=&quot;&quot;)
+print(pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&quot;text&quot;])</code></pre>
+<pre class="en"><code>import paired_eval as pe
+
+tasks = [
+    {&quot;id&quot;: &quot;date-iso&quot;, &quot;instruction&quot;: &quot;Write 5 March 2024 as an ISO 8601 date. Output only the date.&quot;,
+     &quot;check&quot;: lambda r: r.strip() == &quot;2024-03-05&quot;, &quot;canonical&quot;: &quot;2024-03-05&quot;},
+    {&quot;id&quot;: &quot;json-pair&quot;, &quot;instruction&quot;: &#x27;Output the JSON object {&quot;a&quot;: 1} and nothing else.&#x27;,
+     &quot;check&quot;: lambda r: r.strip() == &#x27;{&quot;a&quot;: 1}&#x27;, &quot;canonical&quot;: &#x27;{&quot;a&quot;: 1}&#x27;},
+]
+systems = {&quot;strict&quot;: pe.make_model(call_strict), &quot;bare&quot;: pe.make_model(call_bare)}   # any call(prompt) -&gt; str
+
+run = pe.run_interleaved(systems, tasks=tasks, n=8, prompt_prefix=&quot;&quot;)
+print(pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&quot;text&quot;])</code></pre>
+<p class="read"><span class="zh">还能做：评 agent 回答是否忠实于它看到的观察（逐条 claim grounding）、rubric 评分并检验 rubric 自身、事前样本量规划、筛出有区分力的题。见 README。</span><span class="en">Also: score whether an agent's answer is faithful to its observations (per-claim grounding), rubric judging with a self-check canary, sample-size planning, and screening for tasks that discriminate. See the README.</span></p>
+</section>
+
+<section id="related">
+<h2><span class="zh">与其他工具的关系</span><span class="en">How it relates to other tools</span></h2>
+<p class="lead"><span class="zh">它们运行评测、产出逐题分数；paired-eval 接在下游，回答“这个差别可信吗、还差多少样本”。描述取自各项目自己的 README。</span><span class="en">They run evaluations and produce per-task scores; paired-eval sits downstream and answers “is this difference credible, and how many more samples would it take?”. Descriptions come from each project's own README.</span></p>
+<table><tbody>
+<tr><td><a href="https://github.com/EleutherAI/lm-evaluation-harness">lm-evaluation-harness</a></td><td><span class="zh">60+ 学术基准、多种模型后端</span><span class="en">60+ academic benchmarks, many model backends</span></td></tr>
+<tr><td><a href="https://github.com/UKGovernmentBEIS/inspect_ai">Inspect</a></td><td><span class="zh">评测框架，200+ 预置评测</span><span class="en">Eval framework with 200+ pre-built evals</span></td></tr>
+<tr><td><a href="https://github.com/promptfoo/promptfoo">promptfoo</a></td><td><span class="zh">side-by-side 对比与 red teaming</span><span class="en">Side-by-side comparison and red teaming</span></td></tr>
+<tr><td><a href="https://github.com/openai/evals">openai/evals</a></td><td><span class="zh">模板 + JSON 数据的评测注册表</span><span class="en">Registry of template-based evals</span></td></tr>
+</tbody></table>
+</section>
+
+<section id="docs">
+<h2><span class="zh">文档</span><span class="en">Documentation</span></h2>
+<div class="grid">
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/docs/lessons.md"><span class="zh">方法学教训</span><span class="en">Methodology lessons</span></a></h3><p><span class="zh">每个统计原语防的是什么错：p 地板、地板的基数、MDE、null 必须附界、天花板、筛选可靠性……</span><span class="en">What each primitive guards against: the p floor and its basis, MDE, nulls with bounds, ceilings, screening reliability …</span></p></div>
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/docs/findings.md"><span class="zh">案例研究</span><span class="en">Case study</span></a></h3><p><span class="zh">用本工具对一对模型、三族任务做的实测；数字是实例特定的，展示的是报告该怎么写。</span><span class="en">One model pair, three task families; the numbers are instance-specific and show how a conclusion should be written.</span></p></div>
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/docs/corrections.md"><span class="zh">纠正记录</span><span class="en">Corrections</span></a></h3><p><span class="zh">被推翻或修正过的结论，原文保留、指向新证据。</span><span class="en">Conclusions that were overturned or corrected, kept in place and pointing at the new evidence.</span></p></div>
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/CONTRIBUTING.md"><span class="zh">参与贡献</span><span class="en">Contributing</span></a></h3><p><span class="zh">钩子、变异测试基线、统计代码的额外纪律。</span><span class="en">Hooks, the mutation-testing baseline, extra discipline for statistical code.</span></p></div>
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/CHANGELOG.md"><span class="zh">更新日志</span><span class="en">Changelog</span></a></h3><p><span class="zh">Keep a Changelog 格式；</span><span class="en">Keep a Changelog format; </span><a href="https://github.com/alloevil/paired-eval/releases"><span class="zh">发布页</span><span class="en">releases</span></a></p></div>
+<div class="card"><h3><a href="https://github.com/alloevil/paired-eval/blob/main/examples/adapter_openai_compat.py"><span class="zh">OpenAI 兼容适配器</span><span class="en">OpenAI-compatible adapter</span></a></h3><p><span class="zh">只用标准库；把任意兼容端点接成 call / judge。</span><span class="en">Standard library only; turns any compatible endpoint into call / judge.</span></p></div>
+</div>
+</section>
+</main>
+
+<footer class="wrap">
+<span class="bar" style="background:var(--accent)"></span><span class="bar" style="background:var(--accent2)"></span>
+paired-eval v0.2.0 · MIT · <a href="https://github.com/alloevil/paired-eval">github.com/alloevil/paired-eval</a> · <span class="zh">本页无外部脚本、样式或字体。</span><span class="en">This page loads no external scripts, styles or fonts.</span>
+</footer>
+<script>
+(function(){var k='paired-eval-lang',b=document.body,btn=document.getElementById('lang');
+function set(l){b.setAttribute('data-lang',l);document.documentElement.lang=l==='zh'?'zh-CN':'en';btn.textContent=l==='zh'?'English':'中文';try{localStorage.setItem(k,l)}catch(e){}}
+var saved=null;try{saved=localStorage.getItem(k)}catch(e){}
+set(saved||((navigator.language||'').toLowerCase().indexOf('zh')===0?'zh':'en'));
+btn.addEventListener('click',function(){set(b.getAttribute('data-lang')==='zh'?'en':'zh')});})();
+</script>
+</body>
+</html>

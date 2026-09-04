@@ -30,12 +30,19 @@ def git(repo, *args, check=True):
                           capture_output=True, text=True, check=check)
 
 
+BRANCH = "hookcheck"   # 临时工作仓统一用这个分支名, 与真实仓库当前在哪个分支无关
+
+
 def setup(tmp):
-    """从真实仓库克隆一份工作仓 + 一个裸远端, 并启用版本化钩子。"""
+    """从真实仓库克隆一份工作仓 + 一个裸远端, 并启用版本化钩子。
+    克隆后立刻切到固定分支名: 初版硬编码 push `main`, 在 feature 分支或 PR 的 detached
+    checkout 上跑就会 "src refspec main does not match any"(Dependabot 的第一个 PR 就撞上了)。
+    钩子检查验证的是钩子的行为, 不该依赖被检出的分支叫什么。"""
     work = pathlib.Path(tmp) / "work"
     bare = pathlib.Path(tmp) / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
     subprocess.run(["git", "clone", "-q", str(ROOT), str(work)], check=True)
+    git(work, "checkout", "-q", "-B", BRANCH)          # detached HEAD 也能落到一个具名分支
     git(work, "config", "core.hooksPath", "hooks")
     git(work, "remote", "add", "bare", str(bare))
     return work, bare
@@ -64,7 +71,7 @@ def case_precommit_accepts_clean(work):
 
 
 def case_prepush_accepts_clean(work):
-    r = git(work, "push", "bare", "main", check=False)
+    r = git(work, "push", "bare", BRANCH, check=False)
     assert r.returncode == 0, f"干净推送应通过: {r.stdout}{r.stderr}"
     return "pre-push 放行干净推送"
 
@@ -76,7 +83,7 @@ def case_prepush_rejects_untested_code(work):
                              UNTESTED + "def aggregate_rubric(results):", 1), encoding="utf-8")
     git(work, "add", "-A")
     git(work, "commit", "-m", "add untested helper")
-    r = git(work, "push", "bare", "main", check=False)
+    r = git(work, "push", "bare", BRANCH, check=False)
     out = r.stdout + r.stderr
     assert r.returncode != 0, f"含未测代码的推送应被拒: {out}"
     assert "推送被拒" in out and "新增存活" in out, out

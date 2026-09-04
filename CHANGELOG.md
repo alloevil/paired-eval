@@ -37,6 +37,9 @@ conclusions that were later overturned in [docs/corrections.md](docs/corrections
   pairs**, and the permutation test's on **nonzero-difference pairs**. Found by the integration test on its first run.
 - A boundary test used `0.88 − 0.80` as "exactly the threshold"; it is `0.0799…` and passed on Python 3.10 only by
   rounding luck. Exposed by CI on 3.12 (Neumaier `sum()`); fixed with binary-exact values and a multi-interpreter layer.
+- `check_hooks.py` pushed a hardcoded `main` to its temporary bare remote, so the hook check failed on any
+  non-main branch or PR merge ref (Dependabot's first PR hit it). The temporary clone now always works on a
+  fixed branch name, whatever is checked out.
 
 [Unreleased]: https://github.com/alloevil/paired-eval/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/alloevil/paired-eval/releases/tag/v0.1.0

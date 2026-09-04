@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- README restructured after comparing nine reference projects (hypothesis, httpx, ruff, ragas, deepeval, openai/evals, …):
+  install and a real example with output within the first 20 lines, a Features list instead of an argumentative table,
+  one-line GitHub description (203 → 115 chars, no jargon), homepage set.
+
 ## [0.2.0] - 2026-09-04
 
 ### Added

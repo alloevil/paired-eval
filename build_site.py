@@ -19,6 +19,7 @@ import paired_eval as pe  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "docs" / "index.html"
 REPO = "https://github.com/alloevil/paired-eval"
+ABOUT = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."   # 与 GitHub About 同句; 主页 meta description 与 CITATION abstract 都从这里取
 INSTALL = f"pip install git+{REPO}.git"
 
 
@@ -175,7 +176,7 @@ def build():
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems</title>
-<meta name="description" content="Paired A/B evaluation for LLM systems with honest statistics: is the difference real, and is the sample big enough? Zero dependencies, Python 3.9+.">
+<meta name="description" content="{ABOUT} Zero dependencies, Python 3.9+.">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <style>{CSS}</style>
 </head>

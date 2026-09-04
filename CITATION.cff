@@ -15,7 +15,7 @@ keywords:
 authors:
   - name: "paired-eval contributors"
 abstract: >-
-  A zero-dependency Python toolbox for paired evaluation of models, agents and harnesses:
-  interleaved repeated runs, McNemar and permutation tests with Holm correction, minimum
-  detectable effect and p-floor diagnostics, a verifier spectrum from exact matching to
-  rubric judging, and self-verification through mutation testing.
+  Evaluate LLM models, agents and harnesses: programmatic checks first (exact / program /
+  retrieval / trajectory grounding), rubrics only for what cannot be verified, with a gated
+  program-then-rubric composition; every comparison is an interleaved paired A/B with honest
+  statistics (McNemar, permutation, Holm, minimum detectable effect, p-value floor). Zero dependencies.

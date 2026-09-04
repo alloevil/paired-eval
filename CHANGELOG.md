@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- One-line description aligned everywhere (GitHub About, website meta, `pyproject`, README tagline, CITATION)
+  to the model / agent / harness framing; a test now keeps them in step.
+
 ## [0.3.0] - 2026-09-04
 
 ### Added

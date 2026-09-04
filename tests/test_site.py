@@ -115,6 +115,23 @@ def test_site_code_samples_are_valid_python_and_match_api():
     assert "桩函数" in src and "stub functions" in src, "demo 必须标明是桩, 不是模型"
 
 
+def test_descriptions_say_the_same_thing():
+    """一句话描述在四处出现(GitHub About / 主页 meta / pyproject / README 标语), 曾各说各话:
+    About 还在讲"比较两个系统"时 README 已改成"评模型、agent、harness"。能核对的都核对。"""
+    import re
+    meta = re.search(r'name="description" content="([^"]*)"', INDEX.read_text(encoding="utf-8")).group(1)
+    assert meta.startswith(build_site.ABOUT), (meta, build_site.ABOUT)
+    assert len(build_site.ABOUT) <= 120, "About 应是一句白话(参考项目多在 28~100 字)"
+    for w in ("models", "agents", "harnesses", "program", "rubric", "paired"):
+        assert w in build_site.ABOUT, f"About 缺关键词 {w}"
+    py_desc = re.search(r'^description = "([^"]*)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M).group(1)
+    zh_tagline = re.search(r'<p align="center"><em>([^<]*)</em></p>', (ROOT / "README.md").read_text(encoding="utf-8")).group(1)
+    assert py_desc == zh_tagline, f"pyproject 描述与 README 标语不一致:\n  {py_desc}\n  {zh_tagline}"
+    cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    for w in ("models, agents and harnesses", "rubric", "paired"):
+        assert w in cff, f"CITATION abstract 缺 {w}"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

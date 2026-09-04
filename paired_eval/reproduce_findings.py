@@ -10,13 +10,13 @@
 与 check_hooks.py 同层 —— 外层、慢、手动或 CI 跑。
 
 用法: python3 reproduce_findings.py            用默认模型(需注入 model 调用)
-      import reproduce_findings as rf; rf.main(call)   call(prompt, model) -> str
+      from paired_eval import reproduce_findings as rf; rf.main(call)   call(prompt, model) -> str
 """
 import sys
 
-import claim_eval as ce
-import eval_task as et
-import paired_bench as pb
+from . import claim_eval as ce
+from . import eval_task as et
+from . import paired_bench as pb
 
 STRICT = "严格按要求输出,不要任何多余内容。要求: "
 BARE = ""

@@ -30,9 +30,9 @@ import hashlib
 import statistics
 import time
 
-import answer_match as am
-import claim_eval as ce
-import rubric_eval as re_
+from . import answer_match as am
+from . import claim_eval as ce
+from . import rubric_eval as re_
 
 SUPPORTED = ("exact", "retrieval", "trajectory", "rubric", "gated")
 

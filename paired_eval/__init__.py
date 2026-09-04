@@ -11,21 +11,21 @@
     pe.set_language("en")                                  # 报告文案切英文(默认中文)
     pe.demo()                                              # 离线演示: 两个桩系统跑一遍完整报告
 
-`python3 paired_eval.py [--lang en]` 直接跑 demo —— 不需要任何 API, 十秒内看到报告长什么样。
+`python3 -m paired_eval [--lang en]` 直接跑 demo —— 不需要任何 API, 十秒内看到报告长什么样。
 """
-from answer_match import extract_answer, grade_answer
-from claim_eval import (Meter, detectable_effect, extract_claims, holm_adjust, interpret,
+from .answer_match import extract_answer, grade_answer
+from .claim_eval import (Meter, detectable_effect, extract_claims, holm_adjust, interpret,
                         make_resilient, mcnemar_exact, min_units_for_alpha, p_floor,
                         paired_compare, pass_hat_k, required_pairs, required_tasks,
                         set_language, throttled_pmap, verify_trajectory, wilson_ci)
-from eval_task import evaluate, evaluate_batch, evaluate_pair, repeat_evaluate, validate_task
-from paired_bench import (ALL_TASKS, DERIVATION_CASES, RUBRIC_GATE, SCAFFOLD_SENSITIVE,
+from .eval_task import evaluate, evaluate_batch, evaluate_pair, repeat_evaluate, validate_task
+from .paired_bench import (ALL_TASKS, DERIVATION_CASES, RUBRIC_GATE, SCAFFOLD_SENSITIVE,
                           TRAJECTORY_GATE, make_model, pairwise_compare, reliability_matrix,
                           bench_tasks, judge_check, report, run_interleaved, run_paired,
                           run_paired_repeated, run_repeated, saturation, screen_graded, screen_tasks)
-from rubric_eval import rubric_canary, run_rubric
+from .rubric_eval import rubric_canary, run_rubric
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     # 配对 A/B
     "make_model", "run_paired", "run_repeated", "run_paired_repeated", "run_interleaved",
@@ -61,9 +61,3 @@ def demo(n=4, out=print, lang=None):
     out(rp["text"])
     return rp
 
-
-if __name__ == "__main__":
-    import sys
-    args = sys.argv[1:]
-    lang = args[args.index("--lang") + 1] if "--lang" in args and args.index("--lang") + 1 < len(args) else None
-    demo(lang=lang)

@@ -12,9 +12,9 @@ _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项
 import functools
 import re
 
-import claim_eval as ce
+from paired_eval import claim_eval as ce
 import paired_eval as pe
-import rubric_eval as re_
+from paired_eval import rubric_eval as re_
 from examples import adapter_openai_compat as ad
 
 ROOT = _pathlib.Path(__file__).resolve().parent.parent
@@ -91,16 +91,16 @@ def _run(name):
 
 
 def test_readme_zh_blocks_run():
-    _run("README.md")
+    _run("README.zh-CN.md")
 
 
 def test_readme_en_blocks_run():
-    _run("README.en.md")
+    _run("README.md")
 
 
 def test_demo_output_in_readme_matches_actual():
-    """README 里贴的 demo 输出必须与 python3 paired_eval.py 的实际输出逐行一致 —— 贴假输出等于撒谎。"""
-    for name, lang in (("README.md", None), ("README.en.md", "en")):
+    """README 里贴的 demo 输出必须与 python3 -m paired_eval 的实际输出逐行一致 —— 贴假输出等于撒谎。"""
+    for name, lang in (("README.zh-CN.md", None), ("README.md", "en")):
         lines = []
         pe.demo(out=lambda s: lines.extend(s.splitlines()), lang=lang)
         actual = "\n".join(lines)
@@ -111,9 +111,9 @@ def test_demo_output_in_readme_matches_actual():
 
 def test_readme_numbers_and_links_are_true():
     """README 写死的事实: 内置题数、互链、文档链接、API 表里的名字都真实存在。"""
-    zh = (ROOT / "README.md").read_text(encoding="utf-8")
-    en = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    assert "README.en.md" in zh and "README.md" in en
+    zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    en = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "README.md" in zh and "README.zh-CN.md" in en
     n = len(pe.ALL_TASKS)
     assert f"{n} 道中文冒烟题" in zh and f"{n} Chinese smoke tasks" in en, f"内置题数是 {n}"
     for path in ("docs/README.md", "docs/lessons.md", "docs/findings.md", "CONTRIBUTING.md",

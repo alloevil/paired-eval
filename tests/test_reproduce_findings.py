@@ -9,8 +9,8 @@
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
-import reproduce_findings as rf
-import paired_bench as pb
+from paired_eval import reproduce_findings as rf
+from paired_eval import paired_bench as pb
 
 SENS = [t for t in pb.ALL_TASKS if t["id"] in pb.SCAFFOLD_SENSITIVE]
 CANON = {t["instruction"]: t["canonical"] for t in SENS}

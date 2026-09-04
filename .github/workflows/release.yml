@@ -1,0 +1,56 @@
+# Tag push (vX.Y.Z) -> fast suite -> build sdist+wheel -> PyPI (Trusted Publishing) -> GitHub Release.
+# One-time setup on pypi.org: project "paired-eval" -> Publishing -> add GitHub publisher
+#   owner alloevil / repo paired-eval / workflow release.yml / environment pypi.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: sh runtests.sh
+      - name: Tag must match pyproject version
+        run: |
+          v="v$(python3 -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          test "$v" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != pyproject $v"; exit 1; }
+      - run: python3 -m pip install --quiet build && python3 -m build
+      - name: Smoke the wheel in a clean venv
+        run: |
+          python3 -m venv /tmp/v && /tmp/v/bin/pip install --quiet dist/*.whl
+          cd /tmp && /tmp/v/bin/python -m paired_eval --lang en | head -3
+          /tmp/v/bin/python -c "import paired_eval as pe, sys; assert pe.__version__ == '${GITHUB_REF_NAME#v}'; print(pe.interpret(pe.paired_compare([1,0,1,1],[1,0,0,1]), lang='en')['verdict'])"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # PyPI Trusted Publishing
+      contents: write   # GitHub Release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/* -R "$GITHUB_REPOSITORY" --clobber

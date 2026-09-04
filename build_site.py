@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "docs" / "index.html"
 REPO = "https://github.com/alloevil/paired-eval"
 ABOUT = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."   # 与 GitHub About 同句; 主页 meta description 与 CITATION abstract 都从这里取
-INSTALL = f"pip install git+{REPO}.git"
+INSTALL = "pip install paired-eval"
 
 
 def demo_output(lang):
@@ -188,8 +188,8 @@ def build():
        "Evaluate models, agents and harnesses: verify programmatically whatever can be verified, hand the rest to a rubric — and make every comparison a statistically honest paired one.", "p", "tagline")}
 <div class="actions">
 <a class="btn primary" href="{REPO}">GitHub</a>
-<a class="btn" href="{REPO}/blob/main/README.md">{zh_en("README", "README（中文）")}</a>
-<a class="btn" href="{REPO}/blob/main/README.en.md">{zh_en("English README", "README")}</a>
+<a class="btn" href="{REPO}/blob/main/README.zh-CN.md">{zh_en("README（中文）", "中文 README")}</a>
+<a class="btn" href="{REPO}/blob/main/README.md">{zh_en("English README", "README")}</a>
 <a class="btn" href="{REPO}/blob/main/docs/README.md">{zh_en("文档", "Docs")}</a>
 <button class="btn lang" id="lang" type="button">English</button>
 </div>
@@ -223,9 +223,9 @@ def build():
 <h2>{zh_en("十秒钟看效果（统计层的离线演示）", "Ten seconds (an offline demo of the statistics layer)")}</h2>
 <p class="lead">{zh_en("<strong>这里的 strict / bare 是两个桩函数，不是模型</strong>——它们复刻一种真实观察到的失败机理（裸指令下正确答案被包进 markdown 围栏），只为在没有 API 时展示报告的形状。输出是真的（由测试与当前代码逐行比对）。",
                        "<strong>strict / bare here are two stub functions, not models</strong> — they replay one real failure mechanism (a bare prompt wraps the correct JSON in markdown fences), only to show the shape of a report without any API. The output is real (a test keeps it identical to the current code).")}</p>
-<pre class="zh"><code>$ python3 paired_eval.py
+<pre class="zh"><code>$ python3 -m paired_eval
 {e(demo_zh)}</code></pre>
-<pre class="en"><code>$ python3 paired_eval.py --lang en
+<pre class="en"><code>$ python3 -m paired_eval --lang en
 {e(demo_en)}</code></pre>
 <p class="read">{zh_en("两题两系统全对、不携带信息（有效样本 2/4）；8 个不一致对全部偏向 strict，分布在 2 题上（集中度 0.50，非单题异常）；逐题置换 p=0.506 是因为只有 2 道有信息题，它的最小可能 p 就是 0.5——而逐轮 McNemar 用上全部 16 个配对单元。末段是可直接写进报告的结论。",
                         "Two tasks were solved by both systems every time and carry no information (informative sample 2/4); all 8 discordant pairs favour strict, spread over 2 tasks (concentration 0.50); the per-task permutation p is 0.506 because with 2 informative tasks its minimum attainable p is 0.5 — per-round McNemar uses all 16 paired units. The last clause is a verdict you can paste into a report.")}</p>

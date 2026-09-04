@@ -201,8 +201,8 @@ def test_config_resolution_and_validation(monkeypatch=None):
 def test_adapter_plugs_into_make_model_and_evaluate():
     """端到端: 适配器产出的 call/llm 能直接喂给 paired_bench.make_model 与 eval_task.evaluate。
     这才是它存在的理由 —— 签名对得上比每个字段都对更重要。"""
-    import eval_task as et
-    import paired_bench as pb
+    from paired_eval import eval_task as et
+    from paired_eval import paired_bench as pb
 
     def body(srv):
         make = lambda: pb.make_model(ad.make_call(model="m", base_url=srv.base_url, api_key="k"),

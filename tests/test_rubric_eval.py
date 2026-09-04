@@ -3,7 +3,7 @@
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
-import rubric_eval as re_
+from paired_eval import rubric_eval as re_
 
 
 def mock_llm(prompt, system, schema):

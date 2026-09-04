@@ -1,0 +1,15 @@
+# 自动生成 release notes 时按标签分组; 未打标签的 PR 落在"其他"。
+changelog:
+  exclude:
+    labels: ["ci"]
+  categories:
+    - title: 方法学 / Methodology
+      labels: ["methodology"]
+    - title: 修复 / Fixes
+      labels: ["bug"]
+    - title: 结论变更 / Findings
+      labels: ["finding-drift", "findings"]
+    - title: 文档 / Docs
+      labels: ["docs"]
+    - title: 其他 / Other
+      labels: ["*"]

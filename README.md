@@ -4,6 +4,12 @@
 
 [English](README.en.md) · [实测结论](docs/findings.md) · [方法学教训](docs/lessons.md) · [纠正记录](docs/corrections.md)
 
+[![CI](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
+[![Mutation tested](https://img.shields.io/badge/mutation--tested-473_points-6f42c1.svg)](docs/lessons.md#mutation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
 零第三方依赖，纯标准库 Python ≥ 3.9。所有模型调用都是**注入**的：本仓库不绑定任何供应商。
 
 ---
@@ -141,6 +147,11 @@ r["score"], r["metrics"]["fabricated"]    # grounding_rate, 以及无据 claim �
 - **null 必须附界**：不许写"无差异"，只许写"排除了 ≥X% 的效应"或"检验无力，需 N 个 ×××"。
 - **门禁必须自测**：每一层验证都有下一层验证它。
 - **等价变异记录而非补测**；**纠正留痕而非覆盖**。
+
+## 参与
+
+改动前请读 [CONTRIBUTING.md](CONTRIBUTING.md)：五层验证怎么跑、变异基线怎么更新、提交信息为什么要写"为什么"。
+文档总览见 [docs/README.md](docs/README.md)。
 
 ## 许可
 

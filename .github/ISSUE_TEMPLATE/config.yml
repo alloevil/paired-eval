@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 文档索引 / Documentation index
+    url: https://github.com/alloevil/paired-eval/blob/main/docs/README.md
+    about: 先看这里 —— 大多数"为什么"都有条目。/ Most "why" questions already have an entry.

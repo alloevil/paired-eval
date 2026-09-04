@@ -1,0 +1,32 @@
+name: Bug 报告 / Bug report
+description: 代码行为与文档或预期不符 / Behaviour differs from docs or expectation
+labels: ["bug"]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: 最小复现 / Minimal reproduction
+      description: 尽量用确定性假模型(见 tests/ 里的写法), 不要贴 API key。/ Prefer deterministic fakes as in tests/; never paste API keys.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期 vs 实际 / Expected vs actual
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Python 版本与提交 / Python version and commit
+      placeholder: "python3 --version; git rev-parse --short HEAD"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 已确认 / Checked
+      options:
+        - label: sh runtests.sh 在我的机器上全绿 / the fast suite passes on my machine
+        - label: 不是 docs/findings.md 里的数字与我的模型不一致 —— 那些数字是实例特定的, 不是 bug / not "findings.md numbers differ for my model" — those are instance-specific by design

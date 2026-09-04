@@ -1,0 +1,8 @@
+# 本仓库零 Python 依赖, 唯一会过期的是 CI 里的 actions 版本(checkout / setup-python)。
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels: ["ci"]

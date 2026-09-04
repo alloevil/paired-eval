@@ -1,0 +1,25 @@
+name: 方法学问题 / Methodology question
+description: 某个统计量、判据或设计为什么这样做 / Why a statistic, criterion or design decision is the way it is
+labels: ["methodology"]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: 涉及的函数或文档锚点 / Function or doc anchor
+      placeholder: "claim_eval.interpret / docs/lessons.md#floor-basis"
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: 问题 / Question
+      description: 如果你认为现有做法有误, 请附上能复现差异的最小数据。/ If you think the current approach is wrong, include minimal data that shows the discrepancy.
+    validations:
+      required: true
+  - type: checkboxes
+    id: read
+    attributes:
+      label: 已读 / Read
+      options:
+        - label: docs/lessons.md 里对应的条目 / the matching entry in docs/lessons.md
+        - label: docs/corrections.md(它可能已经被推翻并改过了) / docs/corrections.md (it may already have been overturned)

@@ -1,0 +1,23 @@
+name: 结论漂移 / Finding drift
+description: reproduce_findings.py 报 FAIL 或方向反转 / reproduce_findings.py reports FAIL or a direction reversal
+labels: ["finding-drift"]
+body:
+  - type: textarea
+    id: output
+    attributes:
+      label: 完整输出 / Full output
+      description: 包括 "参照格"、"增量" 与所有 WARN/FAIL 行。/ Include the reference cell, increment and every WARN/FAIL line.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: models
+    attributes:
+      label: 用的模型(call / call_b / judge) / Models used
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        **方向反转是发现, 不是失败。** 若脚本报 "方向反转 —— 这是重大发现", 请照原样贴出, 不要先改阈值。
+        *A direction reversal is a finding, not a failure. Paste it as is; do not adjust thresholds first.*

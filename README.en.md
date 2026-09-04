@@ -4,6 +4,12 @@ A methodology toolbox for **paired evaluation** of models, agents, and harnesses
 
 [中文](README.md) · [Findings](docs/findings.md) · [Lessons](docs/lessons.md) · [Corrections](docs/corrections.md)
 
+[![CI](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/alloevil/paired-eval/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
+[![Mutation tested](https://img.shields.io/badge/mutation--tested-473_points-6f42c1.svg)](docs/lessons.md#mutation)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
 Zero third-party dependencies, pure standard-library Python ≥ 3.9. Every model call is **injected**: the repository binds to no vendor.
 Code comments, test messages, and the docs are written in Chinese; this README is the English entry point.
 
@@ -142,6 +148,11 @@ When you evaluate your own systems, rerun the tools; do not copy the numbers.
 - **A null must carry its bound**: never "no difference", only "rules out effects ≥ X%" or "powerless — needs N more ×××".
 - **Gates must test themselves**: every verification layer is verified by the next.
 - **Record equivalent mutants instead of testing them**; **leave corrections in place instead of overwriting them**.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first: how to run the five verification layers, how the mutation baseline is updated, and why commit messages must explain *why*.
+Documentation index: [docs/README.md](docs/README.md).
 
 ## License
 

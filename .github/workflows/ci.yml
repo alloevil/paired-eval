@@ -1,4 +1,4 @@
-# 与 checkall.sh 的分层一致: push/PR 跑前四层(~4 分钟), 每晚跑全部五层(含 6 分钟的变异棘轮)。
+# 与 checkall.sh 的分层一致: push/PR 跑前四层(~4 分钟), 每晚跑全部五层(含约 25 分钟的变异棘轮)。
 # 第六层(reproduce_findings, 需真实模型调用与 API 配额)刻意不在 CI 里 —— 见 checkall.sh 头部。
 name: ci
 
@@ -38,7 +38,7 @@ jobs:
       - run: sh checkall.sh --fast
 
   nightly-full:
-    # 第 5 层单独放夜间: 6 分钟的全量变异, 每次 push 都跑既慢又无增量信息(pre-push 已用 --since 跑过改动行)
+    # 第 5 层单独放夜间: 约 25 分钟的全量变异(473 个变异点 x 3 秒套件), 每次 push 都跑既慢又无增量信息(pre-push 已用 --since 跑过改动行)
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:

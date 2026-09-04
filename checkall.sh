@@ -7,7 +7,7 @@
 #   2 钩子集成      ~26s   建临时仓库+裸远端跑真钩子(pre-commit/pre-push 行为)
 #   3 功效校准      ~5s    required_pairs 与教科书功效公式对量级(真跑蒙特卡洛)
 #   4 手挑变异      ~81s   42 个高阶语义变异 + 腐坏检测(PATTERN-MISS)
-#   5 机械变异棘轮  ~6min  381 个变异点全量, 与基线比对, 新增存活即失败
+#   5 机械变异棘轮  ~25min 473 个变异点全量(每点跑一次 3 秒套件), 与基线比对, 新增存活即失败
 #
 # 刻意不在此脚本内的第六层: reproduce_findings.py, 需注入真实模型调用。三项检查:
 #   1 脚手架效应   ~32 次调用   固定模型, 严格脚手架 vs 裸指令
@@ -19,7 +19,7 @@
 #   python3 -c "import reproduce_findings as r; r.main(call, call_b=..., judge=...)"
 #
 # 用法: sh checkall.sh          全部五层
-#       sh checkall.sh --fast   只跑前四层(跳过 6 分钟的棘轮)
+#       sh checkall.sh --fast   只跑前四层(跳过约 25 分钟的棘轮)
 cd "$(dirname "$0")"
 fail=0
 stage() {
@@ -42,7 +42,7 @@ stage "4 手挑变异" sh mutate.sh
 if [ "$1" != "--fast" ]; then
     stage "5 机械变异棘轮" python3 -B mutate_auto.py --check
 else
-    printf '\n=== 4 机械变异棘轮 ===\nSKIP  (--fast)\n'
+    printf '\n=== 5 机械变异棘轮 ===\nSKIP  (--fast)\n'
 fi
 
 printf '\n=== 汇总 ===\n'

@@ -50,7 +50,7 @@ exact 匹配 → 程序/执行验证 → 性质验证(round-trip / 不变量) �
 
 ```sh
 sh runtests.sh            # 183 个测试, ~3 秒, 零外部依赖(pre-commit 用的就是它)
-sh checkall.sh --fast     # 五层验证清单的前四层(~4 分钟); 不带 --fast 加跑变异棘轮(~6 分钟)
+sh checkall.sh --fast     # 五层验证清单的前四层(~4 分钟); 不带 --fast 加跑变异棘轮(~25 分钟)
 ```
 
 给两个系统做一次配对 A/B——只需提供 `call(prompt) -> str`：
@@ -118,7 +118,7 @@ r["score"], r["metrics"]["fabricated"]    # grounding_rate, 以及无据 claim �
 2 钩子集成      ~26s   建临时仓库 + 裸远端, 跑真实 pre-commit / pre-push
 3 功效校准      ~5s    required_pairs 与教科书功效公式对量级(真跑蒙特卡洛)
 4 手挑变异      ~81s   42 个高阶语义变异 + 腐坏检测
-5 机械变异棘轮  ~6min  400+ 变异点全量, 与已归档等价变异基线比对, 新增存活即失败
+5 机械变异棘轮  ~25min 473 个变异点全量, 与已归档等价变异基线比对, 新增存活即失败
 6 结论复现      手动   reproduce_findings.py: 三条记录结论的方向/量级/显著性/有效样本(需真实模型)
 ```
 

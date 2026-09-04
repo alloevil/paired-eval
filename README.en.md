@@ -51,7 +51,7 @@ This is not decoration. In this repository's own experiments **the same data was
 
 ```sh
 sh runtests.sh            # 183 tests, ~3 s, no external dependencies (this is what pre-commit runs)
-sh checkall.sh --fast     # first four layers of the release checklist (~4 min); drop --fast to add the mutation ratchet (~6 min)
+sh checkall.sh --fast     # first four layers of the release checklist (~4 min); drop --fast to add the mutation ratchet (~25 min)
 ```
 
 A paired A/B between two systems — all you provide is `call(prompt) -> str`:
@@ -120,7 +120,7 @@ is a standard-library-only adapter for OpenAI-compatible endpoints.
 2 hook integration  ~26 s   temporary repo + bare remote, real pre-commit / pre-push
 3 power calibration ~5 s    required_pairs against the textbook power formula (real Monte Carlo)
 4 hand-picked mutants ~81 s 42 high-level semantic mutants + rot detection
-5 mutation ratchet  ~6 min  400+ mutation points, compared with the archived equivalent-mutant baseline; any new survivor fails
+5 mutation ratchet  ~25 min 473 mutation points, compared with the archived equivalent-mutant baseline; any new survivor fails
 6 finding replay    manual  reproduce_findings.py: direction / magnitude / significance / informative sample of three recorded conclusions
 ```
 

@@ -10,8 +10,9 @@ on:
     - cron: "17 3 * * *"      # 每日 UTC 03:17: 全量, 含机械变异棘轮
 
 # 同一分支/PR 的新提交取消还在跑的旧运行; main 上的运行不取消(它是发布依据)。
+# 组名含事件名: 否则夜间全量(schedule, 含 25 分钟棘轮)与 main 的 push 同组, push 会排队 40+ 分钟(实测)。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:

@@ -341,6 +341,7 @@ def test_derivation_thresholds_are_inclusive():
     变异测试抓到这三处: 触顶阈 / 增量阈 / 单元数下界的 == 情形全未被覆盖。"""
     E = rf.EXPECTED
     real = rf._grade_derivation
+    real_inc = E["derivation_increment_min"]
     try:
         # 触顶阈: 参照格恰好 0.95 不算触顶(此时报的是增量不足, 病因不同)
         rf._grade_derivation = _fixed_grader(E["derivation_ceiling_max"], 1.0)
@@ -349,13 +350,19 @@ def test_derivation_thresholds_are_inclusive():
         rf._grade_derivation = _fixed_grader(E["derivation_ceiling_max"] + 0.001, 1.0)
         p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
         assert "触顶" in p[0], p
-        # 增量阈: 恰好等于阈值通过, 差一点点则失败
-        base = 0.80
-        rf._grade_derivation = _fixed_grader(base, base + E["derivation_increment_min"])
+        # 增量阈: 恰好等于阈值通过, 差一点点则失败。
+        # 必须用二进制精确的值: 初版用 0.88-0.80, 它其实是 0.07999999999999996(< 0.08), 在
+        # 3.10 的朴素 sum() 下 18 次舍入误差恰好把均值推回 0.08 而"通过", 3.12 起 sum() 改用
+        # Neumaier 补偿求和, 结果更准, 刀锋翻转 —— CI 第一次运行就在 3.12 上抓到。
+        E["derivation_increment_min"] = 0.125                    # 二进制精确
+        base = 0.5
+        assert (0.625 - base) == 0.125, "构造值必须精确, 否则又是刀锋"
+        rf._grade_derivation = _fixed_grader(base, 0.625)
         assert rf.check_derivation_increment(None, None, n=6, verbose=False) == ([], [])
-        rf._grade_derivation = _fixed_grader(base, base + E["derivation_increment_min"] - 1e-3)
+        rf._grade_derivation = _fixed_grader(base, 0.625 - 1e-3)
         p, _ = rf.check_derivation_increment(None, None, n=6, verbose=False)
         assert len(p) == 1 and "已衰减" in p[0], p
+        E["derivation_increment_min"] = real_inc
         # 单元数下界: 恰好 18 通过; 15(n=5)警告并给出所需轮数
         rf._grade_derivation = _fixed_grader(0.79, 0.92)
         assert rf.check_derivation_increment(None, None, n=6, verbose=False)[1] == []
@@ -363,6 +370,7 @@ def test_derivation_thresholds_are_inclusive():
         assert p == [] and "单元数 15 < 18" in w[0] and "n>=6" in w[0], (p, w)
     finally:
         rf._grade_derivation = real
+        E["derivation_increment_min"] = real_inc      # 断言中途失败时也要还原, 否则污染后续测试
 
 
 

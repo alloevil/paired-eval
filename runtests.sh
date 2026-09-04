@@ -9,6 +9,8 @@
 # 本仓库真实踩过(两个套件已红, 只看 tail -3 全绿就继续往下做; docs/lessons.md#tail-safe)。
 # 汇总行永远在最后, 故任何 tail 都能看到成败。
 cd "$(dirname "$0")"
+PY="${PYTHON:-python3}"   # 可覆盖解释器: PYTHON=python3.13 sh runtests.sh —— 3.12 起 sum() 改用补偿求和,
+                          # 一个浮点刀锋测试在 3.10 靠舍入误差通过、在 3.12 上翻转, CI 第一次运行才暴露
 fail=0
 files=0
 bad=""
@@ -23,7 +25,7 @@ for f in tests/test_*.py; do
         fail=1; bad="$bad $(basename "$f")"
         continue
     fi
-    if out=$(python3 -B "$f" 2>&1); then
+    if out=$("$PY" -B "$f" 2>&1); then
         n=$(echo "$out" | tail -1 | grep -o '^[0-9][0-9]*')
         if [ "${n:-0}" -ne "$defs" ]; then
             echo "[$(basename "$f")] FAILED: 定义了 $defs 个测试, 只执行了 ${n:-0} 个 —— 有测试被静默跳过"
@@ -45,6 +47,6 @@ fi
 if [ "$fail" -ne 0 ]; then
     echo "=== 套件失败:$bad ==="
 else
-    echo "=== 全部通过: $files 测试 ==="
+    echo "=== 全部通过: $files 测试 ($("$PY" -c 'import sys; print("Python %d.%d.%d" % sys.version_info[:3])')) ==="
 fi
 exit $fail

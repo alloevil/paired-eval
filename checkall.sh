@@ -3,7 +3,7 @@
 # 本脚本是发布流程的可执行文档 —— 各层的分层理由见对应工具头部, 这里只保证
 # 顺序正确、全部跑到、任一失败都反映在退出码里(不因前面失败就跳过后面, 一次看全)。
 #
-#   1 快速套件      ~5s    177 测试 + 结构自检(pre-commit 用的就是它)
+#   1 快速套件      ~3s    192 测试 + 结构自检(pre-commit 用的就是它); 1b 用本机其他解释器重跑
 #   2 钩子集成      ~26s   建临时仓库+裸远端跑真钩子(pre-commit/pre-push 行为)
 #   3 功效校准      ~5s    required_pairs 与教科书功效公式对量级(真跑蒙特卡洛)
 #   4 手挑变异      ~81s   42 个高阶语义变异 + 腐坏检测(PATTERN-MISS)
@@ -34,6 +34,12 @@ stage() {
 }
 
 stage "1 快速套件" sh runtests.sh
+# 1b: 本机装了别的解释器就都跑一遍(各 ~3 秒)。CI 矩阵覆盖 3.9 与最新版, 本地也该能在推送前看到。
+for alt in python3.9 python3.10 python3.11 python3.12 python3.13 python3.14; do
+    if command -v "$alt" >/dev/null 2>&1 && [ "$("$alt" -c 'import sys; print(sys.version_info[:2])')" != "$(python3 -c 'import sys; print(sys.version_info[:2])')" ]; then
+        stage "1b 快速套件 ($alt)" env PYTHON="$alt" sh runtests.sh
+    fi
+done
 stage "2 钩子集成" python3 -B check_hooks.py
 stage "3 功效校准" python3 -B -c \
     "import sys; sys.path.insert(0, 'tests'); import test_claim_eval as t; \

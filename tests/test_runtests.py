@@ -118,7 +118,9 @@ def test_summary_line_is_last_and_tail_safe():
             '    print(f"\\n{len(tests)} tests passed")\n', encoding="utf-8")
         r = subprocess.run(["sh", "runtests.sh"], cwd=work, capture_output=True, text=True)
         last = r.stdout.strip().splitlines()[-1]
-        assert r.returncode == 0 and last == "=== 全部通过: 1 测试 ===", last
+        # 汇总行带解释器版本: 多版本跑时一眼能看出是哪个 Python 的结果
+        assert r.returncode == 0 and last.startswith("=== 全部通过: 1 测试 (Python 3.") \
+            and last.endswith(") ==="), last
         # 加一个失败文件, 并让它在字母序上排在前面 -> 逐文件的 FAILED 会被 tail 截掉
         (work / "tests" / "test_0bad.py").write_text(
             'def test_bad():\n    assert False\n\n\nif __name__ == "__main__":\n'

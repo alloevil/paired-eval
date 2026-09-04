@@ -10,12 +10,13 @@ on:
 
 jobs:
   fast-suite:
-    # 第 1 层在最低与最新支持版本上各跑一遍: requires-python >= 3.9(ast.unparse / math.nextafter)
+    # 第 1 层在多个版本上各跑一遍: requires-python >= 3.9(ast.unparse / math.nextafter)。
+    # 第一次 CI 就在 3.12 上抓到一个 3.10 下靠舍入运气通过的浮点刀锋测试 —— 矩阵不是形式。
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.12"]
+        python: ["3.9", "3.12", "3.13"]   # 最低支持版 + 3.12(sum 改补偿求和的版本) + 最新
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

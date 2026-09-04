@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use the methodology or the toolbox, please cite the repository."
 title: "paired-eval: a paired-evaluation toolbox for LLM models, agents and harnesses"
 type: software
-version: 0.1.0
+version: 0.2.0
 date-released: 2026-09-04
 license: MIT
 repository-code: "https://github.com/alloevil/paired-eval"

@@ -167,6 +167,20 @@ def test_docs_anchors_resolve():
     assert not missing, "悬空锚点:\n  " + "\n  ".join(missing)
 
 
+def test_version_is_consistent_everywhere():
+    """pyproject / paired_eval.__version__ / CITATION.cff / CHANGELOG 最新条目必须是同一个版本号 ——
+    四处手改, 漏一处就会发出自相矛盾的 release。"""
+    import re
+    import sys
+    sys.path.insert(0, str(ROOT))
+    import paired_eval
+    py = re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M).group(1)
+    cff = re.search(r"^version: (\S+)", (ROOT / "CITATION.cff").read_text(encoding="utf-8"), re.M).group(1)
+    latest = re.search(r"^## \[(\d+\.\d+\.\d+)\]", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), re.M).group(1)
+    assert py == paired_eval.__version__ == cff == latest, (py, paired_eval.__version__, cff, latest)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", py), py
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

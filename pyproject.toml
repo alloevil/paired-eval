@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paired-eval"
-version = "0.1.0"
+version = "0.2.0"
 description = "配对评测方法学工具箱: 模型 / agent / harness 的诚实统计比较, 附验证器谱系与自我验证层"
 readme = "README.md"
 license = { file = "LICENSE" }

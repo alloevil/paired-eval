@@ -25,7 +25,7 @@ from paired_bench import (ALL_TASKS, DERIVATION_CASES, RUBRIC_GATE, SCAFFOLD_SEN
                           run_repeated, saturation, screen_graded, screen_tasks)
 from rubric_eval import rubric_canary, run_rubric
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # 配对 A/B
     "make_model", "run_paired", "run_repeated", "run_paired_repeated", "run_interleaved",

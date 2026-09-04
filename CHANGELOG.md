@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-04
+
 ### Added
 - `paired_eval` module: a single import surface matching the repository name (`import paired_eval as pe`), re-exporting
   the public API of the implementation modules, plus `pe.demo()` / `python3 paired_eval.py` — an offline demo that
@@ -57,5 +59,6 @@ conclusions that were later overturned in [docs/corrections.md](docs/corrections
   non-main branch or PR merge ref (Dependabot's first PR hit it). The temporary clone now always works on a
   fixed branch name, whatever is checked out.
 
-[Unreleased]: https://github.com/alloevil/paired-eval/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/alloevil/paired-eval/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/alloevil/paired-eval/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/alloevil/paired-eval/releases/tag/v0.1.0

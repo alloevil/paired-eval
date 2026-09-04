@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 """paired_bench 离线测试:mock 模型,零网络。运行: python3 test_paired_bench.py"""
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import paired_bench as pb
 
 
@@ -878,7 +881,7 @@ def _cell(rate, n=3, k=4):
 
 
 def test_report_flags_ceiling_and_floor():
-    """触顶/触底必须自动报出并声明交互项不可解释 —— 第113轮的 2x2 里三个格子
+    """触顶/触底必须自动报出并声明交互项不可解释 —— 曾有一次 2x2(docs/corrections.md#ceiling-interaction)里三个格子
     都是 1.000, 交互项 -0.667 无法与天花板假象区分, 而当时的报告没提这件事。"""
     # 复刻实测格局: 一格 0.333, 三格触顶
     rp = pb.report({"bare-single": _cell(1 / 3), "bare-check": _cell(1.0),
@@ -928,7 +931,7 @@ def test_derivation_cases_shape_and_distinctness():
 
 def test_screen_graded_two_stages():
     """连续分数版筛选: 恒过/恒败一阶段筛掉, 噪声与贴边者二阶段剔除。
-    第116轮手工跑了两遍这个协议才找到有余量题族, 本函数承载它。"""
+    此前手工跑了两遍这个协议才找到有余量题族(docs/lessons.md#headroom), 本函数承载它。"""
     seq = {"always1": [1.0], "always0": [0.0], "stable-mid": [0.6, 0.7, 0.65, 0.7],
            "noise": [0.5, 1.0, 1.0, 1.0], "edge": [0.9, 1.0, 1.0, 1.0]}
     pos = {k: 0 for k in seq}
@@ -993,7 +996,7 @@ def test_screen_graded_rejects_bad_input():
 
 def test_screen_graded_band_endpoints_are_saturated():
     """band 是开区间: 恰好落在端点上即算饱和 —— 这是"0.9 的题与恒过无异"的直接体现。
-    用 0.2/0.8 做端点(二进制可精确表示), 否则浮点会让相等分支测不到(第117轮踩过)。"""
+    用 0.2/0.8 做端点(二进制可精确表示), 否则浮点会让相等分支测不到(docs/lessons.md#float-equality)。"""
     band = (0.2, 0.8)
     assert sum([0.8] * 4) / 4 == 0.8 and sum([0.2] * 4) / 4 == 0.2, "端点须精确"
     for score, want in ((0.8, "saturated_pass"), (0.8125, "saturated_pass"),

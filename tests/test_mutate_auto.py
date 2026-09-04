@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """mutate_auto 的测试: 变异工具是 pre-push 门禁的承重件, 它的 bug 会
 放过没测试的代码或拦住合法推送。三条作用域规则的 bug 此前全靠手工实验发现,
-没有测试就会静默回归。运行: python3 test_mutate_auto.py
+没有测试就会静默回归。运行: python3 tests/test_mutate_auto.py
 
 只测纯逻辑(降噪过滤/标识生成/diff解析/基线比对), 不跑真实变异(那需要几分钟)。
 """
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import ast
 import json
 import pathlib
@@ -14,7 +17,7 @@ import tempfile
 
 import mutate_auto as ma
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent   # 仓库根(tests/ 的上一级)
 
 SRC = '''
 LIMIT = 100
@@ -169,7 +172,7 @@ def _with_temp_root(fn):
 
 def test_stale_backup_is_restored_on_startup():
     """模拟 SIGKILL 现场: 源文件停在变异状态, 旁路备份仍在 -> 下次启动必须自动还原。
-    第121轮真实踩到: 扫描被取消后 claim_eval.py 被 unparse 且带一个活变异, 快速套件
+    真实踩到过(docs/corrections.md#sigkill): 扫描被取消后 claim_eval.py 被 unparse 且带一个活变异, 快速套件
     因此变红, 而未提交的改动随 git checkout 一起丢失, 只能凭记忆重放。"""
     def body(root):
         src = root / "mod.py"

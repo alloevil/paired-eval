@@ -3,7 +3,7 @@
 """发现复现检查: 把 paired_bench 头部记录的实测结论变成可执行断言。
 
 为什么需要: 记录在 docstring 里的数字是历史声明, 无人能验证它今天是否还成立 ——
-而本仓库第44轮的教训正是"结论会跨会话漂移"(同一模型同一题两个时间窗得 0/8 与 8/8)。
+而本仓库的教训正是"结论会跨会话漂移"(docs/lessons.md#drift)(同一模型同一题两个时间窗得 0/8 与 8/8)。
 把最强的发现变成可复跑的检查, 漂移就会被发现而不是被继承。
 
 刻意不叫 test_*.py: 需要真实模型调用(约32次), 放进 1.5 秒的快速套件会毁掉 pre-commit。
@@ -21,14 +21,14 @@ import paired_bench as pb
 STRICT = "严格按要求输出,不要任何多余内容。要求: "
 BARE = ""
 
-# 记录值来自 paired_bench 头部的 2x2 因子设计终报(第106轮)与其自我纠正(第107轮)。
+# 记录值来自 docs/findings.md#harness 的 2x2 因子设计终报与 docs/corrections.md#over-claimed-null 的自我纠正。
 # 容差留得宽: 复现的是"效应的存在与量级", 不是精确到小数点(那会因漂移而无谓失败)。
 EXPECTED = {
     "scaffold_effect_min": 0.35,      # 记录值 +0.625; 低于 0.35 说明结论已漂移
     "scaffold_p_max": 0.05,           # 记录值 Holm 后 0.0117
     "informative_min": 2,             # 记录值 4/4 有信息; 少于 2 则样本已失效
     "model_null_bound": 0.10,         # 记录值: 模型效应 <10%(80 单元, MDE 0.10)
-    # 第116轮: 严格提示已到位时自检的增量 Δ=+0.183 CI95=[+0.086,+0.285] p=0.0046
+    # docs/findings.md#interaction: 严格提示已到位时自检的增量 Δ=+0.183 CI95=[+0.086,+0.285] p=0.0046
     "derivation_increment_min": 0.08, # 取记录的 CI 下界: 低于此说明增量已消失
     "derivation_units_min": 18,       # 按 (1.96*sd/Δ)^2 反算所得; 少于此只能给警告
     "derivation_ceiling_max": 0.95,   # 参照格触顶则该族失去余量, 交互不可测(须换题)
@@ -93,7 +93,7 @@ def check_model_null(call_a, call_b, n=4, verbose=True):
     bound = verdict["rules_out"]
     if bound is None:
         # 复用 interpret 的诊断: 病因可能是单元太少, 也可能是零不一致对导致检验无力,
-        # 这里自己重推会说错(第119轮实测: 零不一致对时曾误报成"MDE 不可达")。
+        # 这里自己重推会说错(docs/corrections.md#floor-basis-mcnemar: 零不一致对时曾误报成"MDE 不可达")。
         warnings.append(f"这次的 null 不构成复现: {verdict['text']} "
                         f"(记录值是 80 单元 / MDE 0.10)")
     elif bound > EXPECTED["model_null_bound"]:
@@ -168,7 +168,7 @@ def _grade_derivation(case, call, judge, use_check):
 
 
 def check_derivation_increment(call, judge, n=6, verbose=True):
-    """复现第116轮最关键的那条: 严格提示已到位时, 自检仍有可测增量。
+    """复现最关键的那条(docs/findings.md#interaction): 严格提示已到位时, 自检仍有可测增量。
 
     这条最该被监控 —— 它推翻了第113/114轮的"纯替代"结论, 直接改变了实践建议。
     三种失败要分开(与 check_model_null 同规矩):
@@ -206,7 +206,7 @@ def check_derivation_increment(call, judge, n=6, verbose=True):
     elif verdict["verdict"] != "significant" and verdict["rules_out"] is None:
         # 检验本身无力(地板 >= alpha, 或 MDE 不可达): 这是功效问题, 不是结论漂移。
         # 单元数够但非零差值对不够时会走到这里 —— 报"CI 下界<=0"会误导成"效应不存在",
-        # 而真正的处方是换更能拉开差距的题(第120轮修正)。
+        # 而真正的处方是换更能拉开差距的题(docs/lessons.md#floor-basis)。
         warnings.append(f"检验无力, 不构成复现: {verdict['text']}")
     elif cmp_["diff_ci"][0] <= 0:
         problems.append(f"增量的 CI 下界 {cmp_['diff_ci'][0]:+.3f} <= 0: 在足够样本下"

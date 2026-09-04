@@ -42,7 +42,7 @@ def setup(tmp):
 
 
 def case_precommit_rejects_broken_test(work):
-    p = work / "test_answer_match.py"
+    p = work / "tests" / "test_answer_match.py"
     p.write_text(p.read_text(encoding="utf-8") +
                  "\n\ndef test_injected_failure():\n    assert False\n", encoding="utf-8")
     git(work, "add", "-A")

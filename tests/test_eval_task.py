@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 """eval_task 离线测试:mock llm/search,零网络。运行: python3 test_eval_task.py"""
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import claim_eval as ce
 import eval_task as et
 

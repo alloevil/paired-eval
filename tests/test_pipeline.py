@@ -9,6 +9,9 @@ report 报的单元数是否等于 run_interleaved 实际跑的轮次? saturatio
 
 全部用确定性假模型, 不碰真实调用, 故属第 1 层快速套件。
 """
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import claim_eval as ce
 import paired_bench as pb
 
@@ -19,8 +22,8 @@ _RATES = {"mid-a": 0.5, "mid-b": 0.6, "top": 1.0, "bottom": 0.0}
 
 def _cyclic_grader():
     """确定性 grader: 按固定序列出分, 使任意连续 2 轮的均分都落在目标区间。
-    序列必须让"前 n 轮"与"整体均分"同侧 —— 否则 fixture 自己就会踩到第118轮
-    发现的坑: 周期与轮数不互质时, 中段题会因前几轮凑巧满分而被判恒过。"""
+    序列必须让"前 n 轮"与"整体均分"同侧 —— 否则 fixture 自己就会踩到
+    docs/lessons.md#screening-reliability 里的坑: 周期与轮数不互质时, 中段题会因前几轮凑巧满分而被判恒过。"""
     seqs = {"mid-a": [1.0, 0.0], "mid-b": [1.0, 0.0, 1.0, 0.0, 0.0],
             "top": [1.0], "bottom": [0.0]}
     pos = {k: 0 for k in seqs}

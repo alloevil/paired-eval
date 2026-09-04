@@ -36,7 +36,7 @@ stage() {
 stage "1 快速套件" sh runtests.sh
 stage "2 钩子集成" python3 -B check_hooks.py
 stage "3 功效校准" python3 -B -c \
-    "import sys; sys.path.insert(0, '.'); import test_claim_eval as t; \
+    "import sys; sys.path.insert(0, 'tests'); import test_claim_eval as t; \
      t.calibrate_required_pairs_against_formula(); print('规划器与功效公式吻合')"
 stage "4 手挑变异" sh mutate.sh
 if [ "$1" != "--fast" ]; then

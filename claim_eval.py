@@ -381,9 +381,9 @@ def paired_compare(scores_a, scores_b, n_resamples=10000, seed=0):
         "wins": sum(d > 0 for d in diffs), "losses": sum(d < 0 for d in diffs),
         "ties": sum(d == 0 for d in diffs),
         # 有效对数 = 非零差值的对数。符号翻转对零差值对是恒等操作, 故它们不进入
-        # 置换分布, 可达的最小 p 是 2/2^n_effective 而非 2/2^n。实测(第120轮):
+        # 置换分布, 可达的最小 p 是 2/2^n_effective 而非 2/2^n。实测(docs/lessons.md#floor-basis):
         # 5 对零差 + 1 对满差, p=1.0000 恰是 p_floor(1), 与 p_floor(6)=0.031 无关。
-        # interpret 默认拿它当 p 地板的基数 —— 与第119轮 McNemar 那处同一个 bug 类。
+        # interpret 默认拿它当 p 地板的基数 —— 与 McNemar 那处同一个 bug 类(docs/lessons.md#floor-basis)。
         "n_effective": n - sum(d == 0 for d in diffs),
         "p_value": p_value, "diff_ci": (lo, hi),
     }
@@ -437,7 +437,7 @@ def required_pairs(mean_diff, sd, alpha=0.05, power=0.8, sims=200, resamples=200
     """连续分数配对设计的样本量规划 —— required_tasks 的连续版本。
 
     为什么需要单独一支: required_tasks 只服务二值胜率(McNemar), 而 rubric/grounding
-    这类打分是连续的, 检验走符号翻转置换。第116轮规划这类设计时只能手算
+    这类打分是连续的, 检验走符号翻转置换。此前规划这类设计时只能手算
     (1.96*sd/Δ)^2 —— 那是"CI 恰好排除 0"的公式, 实测功效仅 0.45, 与实际使用的置换
     检验不是同一把尺子; 正确的功效公式 ((z_a/2 + z_power)*sd/Δ)^2 大 2.04 倍。
 
@@ -467,7 +467,7 @@ def required_pairs(mean_diff, sd, alpha=0.05, power=0.8, sims=200, resamples=200
         for i in range(sims):
             diffs = [g(mean_diff, sd) for _ in range(n)]
             # 每次 sim 换重采样种子: 复用同一个会让所有置换检验用完全相同的符号翻转
-            # 模式, 各次 p 值高度相关, 功效估计随之偏斜(第121轮自查发现)。
+            # 模式, 各次 p 值高度相关, 功效估计随之偏斜(docs/lessons.md#power-formula)。
             c = paired_compare(diffs, [0.0] * n, n_resamples=resamples, seed=seed + i)
             if c["p_value"] < alpha:
                 hits += 1
@@ -525,7 +525,7 @@ def p_floor(n, resamples=10000):
     """配对符号翻转检验在 n 个单元下的最小可能双侧 p —— 与效应大小无关的硬地板。
     2^n 种符号排列里, 完美分离只占两端各一种, 故 p >= 2/2^n; 重采样实现另有
     1/(resamples+1) 的下限, 取两者较大。
-    实测踩坑(第115轮): 3 个案例得 Δ=+0.911 CI=[+0.893,+0.926] 却 p=0.252 —— 区间
+    实测踩坑(docs/lessons.md#p-floor): 3 个案例得 Δ=+0.911 CI=[+0.893,+0.926] 却 p=0.252 —— 区间
     把 0 排除十万八千里, 检验却说"不显著", 因为 n=3 的地板就是 0.25。
     设计阶段用它定最小案例数: alpha=0.05 -> 需 n>=6(2/2^6=0.031)。
     这是 MDE 的另一面: MDE 问"能检出多小的效应", p_floor 问"再大的效应能拿到多小的 p"。
@@ -555,8 +555,8 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
     不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
     而那个设计只有 16 个配对单元, MDE=0.46, 实际只能排除 >=46% 的效应。
     n_units: 配对单元数(逐题或逐轮), 默认取 compare["n"]; 决定 MDE。
-    floor_n: p 地板的基数, 默认等于 n_units。两者可以不同, 这是第119轮集成测试
-      抓到的真 bug: 若 compare 的 p 来自 McNemar 精确检验, 其可达的最小 p 只由
+    floor_n: p 地板的基数, 默认等于 n_units。两者可以不同, 这是集成测试
+      抓到的真 bug(docs/lessons.md#floor-basis): 若 compare 的 p 来自 McNemar 精确检验, 其可达的最小 p 只由
       不一致对数决定(d 对全在一侧时 p = 2/2^d), 与总单元数无关。10 个单元里只有
       5 对不一致时, 地板是 0.0625 而不是 0.002 —— 前者意味着"这个检验根本到不了
       显著", 后者会被写成"未检出差异, 只能排除 >=67%"。两句话给读者的行动完全不同。

@@ -48,7 +48,7 @@ claim_eval.py 全量扫描(165点)后剩余 13 个存活, 全部经分析为等�
                     换 65、`<` 换 `<=`、`>` 换 `>=` 都不可观测。起点 n=1 换 2 同理:
                     p_floor(1)=1.0 >= 任何 alpha<1, 循环必至少走一步。
 
-分类方法(第115轮定下, 比逐个猜快得多): 对每个存活变异, 把变异体 exec 成模块, 用一组
+分类方法(docs/lessons.md#probe-classification, 比逐个猜快得多): 对每个存活变异, 把变异体 exec 成模块, 用一组
 探针输入(p_floor 跑 n=1..100 x 两种 resamples、min_units 跑 11 个 alpha、interpret 跑
 7 组 (n,alpha))算出输出向量, 与基线逐项比对。零差异 = 等价, 有差异则差异本身就指出
 该断言什么。实测: 11 个存活里 5 个零差异(等价), 5 个有差异(真缺口, 补测后全部杀死),
@@ -205,7 +205,7 @@ def _backup_of(path):
 def restore_stale_backups():
     """启动时先做这件事: 若上次运行被 SIGKILL 打断(工具层超时、用户取消都走这条路),
     try/finally 根本来不及执行, 源文件会停在变异状态而旁路备份还在磁盘上。
-    第121轮真实踩到: 扫描被取消后 claim_eval.py 只剩 0 行注释(被 unparse)且带一个活
+    真实踩到过(docs/corrections.md#sigkill): 扫描被取消后 claim_eval.py 只剩 0 行注释(被 unparse)且带一个活
     变异, 快速套件因此变红; 而当时唯一的"备份"是 git HEAD —— 未提交的改动随 checkout
     一起丢, 只能凭记忆重放。有了旁路文件, 下一次任何调用都会先自动还原。
     必须在读取 original 之前调用: 否则会把变异后的文件当成原件备份, 错误就此固化。

@@ -2,6 +2,9 @@
 """claim_eval 离线结构测试:mock llm/search,零网络零API,验证纯代码路径。
 运行: python3 test_claim_eval.py
 """
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import claim_eval as ce
 
 # ---------------------------------------------------------------- mocks
@@ -891,7 +894,7 @@ def test_interpret_forces_null_bounds():
     assert sig["verdict"] == "significant" and sig["rules_out"] is None
     assert "显著" in sig["text"] and "CI95" in sig["text"]
     # 小样本 null: 两对都有非零差值时地板是 0.5 > alpha, 故诊断为"检验无力"
-    # —— 第115轮从"无信息"改到这里, 第120轮又补上"必须真有非零差值"这个前提。
+    # —— 先从"无信息"改到这里(docs/lessons.md#p-floor), 后补上"必须真有非零差值"这个前提(docs/lessons.md#floor-basis)。
     weak = ce.interpret(ce.paired_compare([1.0, 0.0], [0.0, 1.0]))
     assert weak["verdict"] == "null" and weak["rules_out"] is None
     assert "检验无力" in weak["text"] and weak["p_floor"] == 0.5
@@ -941,7 +944,7 @@ def test_interpret_boundaries():
 
 def test_p_floor_and_min_units():
     """p 地板: n 个配对单元下再大的效应也拿不到比 2/2^n 更小的 p。
-    第115轮实测踩坑: 3 案例得 Δ=+0.911 CI 排除 0 十万八千里, p 却是 0.252。"""
+    实测踩坑(docs/lessons.md#p-floor): 3 案例得 Δ=+0.911 CI 排除 0 十万八千里, p 却是 0.252。"""
     assert ce.p_floor(1) == 1.0, "1 个单元: 两种符号排列, 双侧 p 恒为 1"
     assert ce.p_floor(3) == 0.25 and ce.p_floor(6) == 2 / 64
     assert ce.p_floor(7) < 0.02
@@ -982,7 +985,7 @@ def test_interpret_distinguishes_powerless_test_from_null():
     ok = ce.interpret(ce.paired_compare([1.0] * 6, [0.0] * 6))
     assert ok["verdict"] == "significant"
     # n=6 且六对都有非零差值、但方向混杂 -> 走有界 null 分支(有 rules_out, 非"无力")
-    # 注意不能用两侧完全相同的数据: 那是零有效对, 第120轮起会正确判为"检验无力"。
+    # 注意不能用两侧完全相同的数据: 那是零有效对, 会正确判为"检验无力"(docs/lessons.md#floor-basis)。
     tie = ce.interpret(ce.paired_compare([0.6, 0.4] * 3, [0.4, 0.6] * 3))
     assert tie["verdict"] == "null" and "检验无力" not in tie["text"], tie["text"]
     assert tie["p_floor"] == 2 / 64 and tie["rules_out"] is not None
@@ -994,8 +997,8 @@ def test_interpret_distinguishes_powerless_test_from_null():
 
 
 def test_p_floor_knife_edges():
-    """地板恰好等于 alpha 时显著性仍不可达(判据是 p < alpha) —— 变异测试在
-    第115轮抓到这处: 原本写的 floor > alpha 会把这种设计放行为"可能显著"。"""
+    """地板恰好等于 alpha 时显著性仍不可达(判据是 p < alpha) —— 变异测试
+    抓到这处: 原本写的 floor > alpha 会把这种设计放行为"可能显著"。"""
     a = 2 / 64                                   # 恰好是 p_floor(6)
     assert ce.p_floor(6) == a
     # n=6 且 alpha 恰好等于地板: 必须判"检验无力", 并要求更多单元
@@ -1038,7 +1041,7 @@ def test_p_floor_knife_edges():
 
 def test_p_floor_resample_region_is_exact():
     """中段 n(排列地板已低于重采样地板, 但 n 仍 <64)必须取重采样地板的精确值。
-    变异测试第115轮抓到这段没被覆盖: 把 1/(resamples+1) 写成 2/(resamples+1) 或
+    变异测试抓到这段没被覆盖: 把 1/(resamples+1) 写成 2/(resamples+1) 或
     1/(resamples+2) 都能通过原有断言 —— 因为原测试只探了 n<15 与 n>=64 两头。"""
     # 交叉点: 2/2^n 何时降到重采样地板以下
     assert ce.p_floor(14, 10000) == 2 / 2 ** 14, "n=14 时排列地板仍占优"
@@ -1070,8 +1073,8 @@ def test_min_units_error_reports_actual_floor():
 
 def test_paired_compare_reports_effective_pairs():
     """置换检验的可达最小 p 由非零差值对数决定 —— 符号翻转对零差值对是恒等操作。
-    第120轮实证: 5 对零差 + 1 对满差, p=1.0000 恰是 p_floor(1), 与 p_floor(6) 无关。
-    这与第119轮 McNemar 那处是同一个 bug 类: 接口上传了语义不同的同名量。"""
+    实证(docs/lessons.md#floor-basis): 5 对零差 + 1 对满差, p=1.0000 恰是 p_floor(1), 与 p_floor(6) 无关。
+    这与 McNemar 那处是同一个 bug 类: 接口上传了语义不同的同名量。"""
     c = ce.paired_compare([1.0] * 6, [1.0] * 5 + [0.0])
     assert c["n"] == 6 and c["n_effective"] == 1 and c["ties"] == 5
     assert c["p_value"] == 1.0, "只有一对非零时置换检验必然给 1.0"
@@ -1117,7 +1120,7 @@ def test_interpret_basis_priority_and_wording():
 
 def test_required_pairs_contracts():
     """连续分数样本量规划的契约。用注入的确定性 gauss 钉死边界, 不靠"统计上大概对"
-    —— 与 required_tasks/detectable_effect 同一套做法(第87轮起的约定)。"""
+    —— 与 required_tasks/detectable_effect 同一套做法(docs/lessons.md#injected-rand)。"""
     # 差值恒定(sd=0): 每对同号, 置换 p 恒等于地板, 故样本量只由地板决定
     d = ce.required_pairs(0.1, 0.0, detail=True)
     assert d["n"] == d["floor_n"] == ce.min_units_for_alpha(0.05, 2000)
@@ -1151,7 +1154,7 @@ def test_required_pairs_contracts():
     except ValueError as e:
         assert "sd 不能为负" in str(e), str(e)
     # 单调性: 效应越小需要越多对(同 sd)。用注入的确定性采样器 —— 真跑蒙特卡洛要 15 秒,
-    # 会把 pre-commit 依赖的 2 秒快速套件拖垮(第121轮实测)。慢的那份留给下一个测试。
+    # 会把 pre-commit 依赖的 2 秒快速套件拖垮(docs/lessons.md#fast-suite-budget)。慢的那份留给下一个测试。
     det = lambda mu, s: mu          # 差值恒为 mu: 功效由地板与效应符号决定
     big = ce.required_pairs(0.5, 0.3, sims=6, resamples=400, gauss=det)
     small = ce.required_pairs(0.05, 0.3, sims=6, resamples=400, gauss=det)
@@ -1163,7 +1166,7 @@ def calibrate_required_pairs_against_formula():
 
     刻意不叫 test_*: 真跑蒙特卡洛要 4~5 秒, 会把 pre-commit 依赖的 2 秒快速套件拖慢
     一倍以上。由 checkall.sh 的慢层调用(与 check_hooks.py 同层理由)。
-    第121轮的教训正藏在这里: 手算 (1.96*sd/Δ)^2 答的是"CI 恰好排除 0"(实测功效仅
+    教训正藏在这里(docs/lessons.md#power-formula): 手算 (1.96*sd/Δ)^2 答的是"CI 恰好排除 0"(实测功效仅
     0.45), 而功效公式是 ((z_a/2 + z_power)*sd/Δ)^2, 两者差 2.04 倍。"""
     for md, sd in ((0.122, 0.264), (0.3, 0.3)):
         formula = ((1.96 + 0.8416) * sd / md) ** 2

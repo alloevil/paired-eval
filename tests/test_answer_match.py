@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 """answer_match 离线测试:纯函数,零网络。运行: python3 test_answer_match.py"""
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import answer_match as am
 
 

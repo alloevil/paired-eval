@@ -3,9 +3,12 @@
 """复现检查脚本自身的测试: 用假 call 驱动 check_scaffold_effect 的四条判据。
 
 为什么要测它: 这个脚本是"结论是否漂移"的唯一警报器。若它的判据写反(例如把
-方向反转当成通过、把饱和当成成功), 漂移会静默通过 —— 与第75轮"门禁必须自测"同源。
+方向反转当成通过、把饱和当成成功), 漂移会静默通过 —— 与"门禁必须自测"同源(docs/lessons.md#gates-self-test)。
 不需要真实模型: 注入的 call 是纯函数, 因此可以进快速套件。
 """
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import reproduce_findings as rf
 import paired_bench as pb
 
@@ -162,9 +165,9 @@ def test_task_floor_accepts_exactly_three():
 
 def test_null_check_separates_drift_from_weak_power():
     """null 复现的核心分界: "差异出现了"是失败, "样本不够"只是警告 —— 不能混。
-    第107轮我把 16 单元(MDE 0.46)的 null 当成"效应不存在", 脚本不许重犯。"""
+    曾把 16 单元(MDE 0.46)的 null 当成"效应不存在"(docs/corrections.md#over-claimed-null), 脚本不许重犯。"""
     good = lambda p: _canon_for(p)
-    # 两模型完全等价 -> 零不一致对。第119轮修正后这里的诊断变准了: 病因不是"界更松",
+    # 两模型完全等价 -> 零不一致对。地板基数修正(docs/lessons.md#floor-basis)后这里的诊断变准了: 病因不是"界更松",
     # 而是"检验无力" —— McNemar 一个不一致对都没有, p 恒为 1.0, 与单元数无关。
     problems, warnings = rf.check_model_null(good, good, n=4, verbose=False)
     assert problems == [], "两侧等价不该报失败"
@@ -261,7 +264,7 @@ def test_derivation_check_five_criteria():
         # 1 增量正常: 完整复现
         rf._grade_derivation = _fixed_grader(0.79, 0.92)
         assert rf.check_derivation_increment(None, None, n=6, verbose=False) == ([], [])
-        # 2a 两侧完全相同(零非零差值对): 第120轮修正后归为功效问题而非漂移 ——
+        # 2a 两侧完全相同(零非零差值对): 地板基数修正(docs/lessons.md#floor-basis)后归为功效问题而非漂移 ——
         # 检验没有任何区分材料, 说"在足够样本下仍无法确认"是错的(样本并不足够)。
         rf._grade_derivation = _fixed_grader(0.79, 0.79)
         p, w = rf.check_derivation_increment(None, None, n=6, verbose=False)
@@ -335,7 +338,7 @@ def test_main_wires_judge_only_when_given():
 
 def test_derivation_thresholds_are_inclusive():
     """三处阈值恰好相等时都算通过 —— 否则正常噪声会在边界上随机报警。
-    变异测试第117轮抓到这三处: 触顶阈 / 增量阈 / 单元数下界的 == 情形全未被覆盖。"""
+    变异测试抓到这三处: 触顶阈 / 增量阈 / 单元数下界的 == 情形全未被覆盖。"""
     E = rf.EXPECTED
     real = rf._grade_derivation
     try:
@@ -391,7 +394,7 @@ def test_derivation_ci_straddling_zero_fails():
     """CI 下界为负 = 证据没排除"增量为零", 必须判失败(而非警告): 此时非零差值对
     充足, 检验有力, 只是结论不成立 —— 这正是"漂移"与"功效不足"的分界线。
 
-    附一条结构性观察(第120轮): 下界"恰好等于 0"在本函数里不可达 —— 要让 bootstrap
+    附一条结构性观察: 下界"恰好等于 0"在本函数里不可达 —— 要让 bootstrap
     下界落在 0, 需 <=3 个非零差值对(否则全零重采样的概率低于 2.5%), 而那时"检验无力"
     分支(需 >=6 个非零对才放行)已先拦下。故 `<= 0` 与 `< 0` 在此结构下同结果。"""
     real = rf._grade_derivation

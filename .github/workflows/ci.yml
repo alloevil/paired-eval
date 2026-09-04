@@ -19,7 +19,7 @@ jobs:
         python: ["3.9", "3.12", "3.13"]   # 最低支持版 + 3.12(sum 改补偿求和的版本) + 最新
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: sh runtests.sh
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: git config --global user.name ci && git config --global user.email ci@example.invalid

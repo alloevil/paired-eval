@@ -2,45 +2,56 @@
 # -*- coding: utf-8 -*-
 """README 里的每个 python 代码块都必须能对着真实 API 跑通 —— 文档里的代码也是代码, 且是最先腐坏的那种。
 
-两份 README 的代码块按出现顺序在同一个命名空间里依次执行, 命名空间预先放好示例引用的外部对象
-(call_strict / call_bare / answer / observations / judge / scores_a / scores_b), 全部是确定性假对象。
-README 里写死的数字(内置题数)也在这里核对, 否则第一句就可能是假的。"""
+两份 README 的代码块按出现顺序在同一个命名空间里依次执行。命名空间预先放好示例引用的外部对象
+(answer / judge / scores_a / scores_b), 并把 examples.adapter_openai_compat 的 make_call / make_llm
+换成确定性假实现 —— 假模型按任务 id 作答、按任务声明的答案标记组装, 因此中英两版共用同一套假对象。
+README 里写死的事实(内置题数、链接目标、API 表里的名字)也在这里核对。"""
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import functools
 import re
 
+import claim_eval as ce
 import paired_eval as pe
+import rubric_eval as re_
+from examples import adapter_openai_compat as ad
 
 ROOT = _pathlib.Path(__file__).resolve().parent.parent
 
 
-def _fakes():
-    """示例引用的外部对象。call_bare 复刻真实失败形态: JSON 题上把正确答案包进围栏。"""
-    answers = {"date-iso": "2024-03-05", "json-pair": '{"a": 1}'}
-    instr = {}   # instruction -> answer, 由 tasks 块执行后在 ns 里填(见 _run)
+def _judge(prompt, system, schema):
+    """假评委: 抽 claim / 判 grounding / 判 rubric 三种系统提示各给确定性答案。"""
+    if system is ce.EXTRACT_SYSTEM:
+        return {"claims": [{"text": "X 2023 revenue 41.2bn", "verifiable": True,
+                            "importance": "core", "search_query": "X 2023 revenue"}]}
+    if system is ce.JUDGE_TRAJ_SYSTEM:
+        return {"verdict": "grounded", "source_tool_call": "t1", "evidence_quote": "q", "reasoning": "r"}
+    assert system is re_.JUDGE_RUBRIC_SYSTEM, system
+    return {"verdict": "met" if ("因为" in prompt or "because" in prompt) else "not_met", "reasoning": "r"}
 
-    def pick(prompt):
-        return next(v for k, v in instr.items() if k in prompt)
 
-    def call_strict(prompt):
-        return pick(prompt)
-
-    def call_bare(prompt):
-        a = pick(prompt)
-        return ("```json\n" + a + "\n```") if "JSON" in prompt else a
-
-    def judge(prompt, system, schema):
-        if "claims" in str(schema):
-            return {"claims": [{"text": "X spent 64bn on R&D in 2023", "verifiable": True,
-                                "importance": "core", "search_query": "X 2023 R&D"}]}
-        return {"verdict": "grounded", "reasoning": "r"}
-
-    return {"_answers": answers, "_instr": instr, "call_strict": call_strict, "call_bare": call_bare,
-            "judge": judge, "answer": "X spent 64bn on R&D in 2023.",
-            "observations": [{"tool_call_id": "t", "tool": "s", "observation": "X spent 64bn on R&D in 2023."}],
-            "scores_a": [1, 0, 1, 1, 0, 1, 1, 0], "scores_b": [1, 0, 0, 1, 0, 0, 1, 0]}
+def _fake_call_factory(ns):
+    """make_call 的假实现。返回的 call 按提示里出现的任务指令定位任务, 按 verification 里的标记组装答案。
+    model-a 解释过程且守标记; model-b 不解释(gated 题的 rubric 过不了); 裸指令(无严格前缀、非自检)下
+    date 题不带标记 -> exact 判 not_attempted, 让 harness 与 agent 两个维度都有可观察的差异。"""
+    def make_call(model=None, **kw):
+        def call(prompt):
+            tasks = ns.get("my_tasks") or []
+            task = next((t for t in tasks if t["instruction"] in prompt), None)
+            if task is None:                                     # 第一段示例的 task, 或找不到 -> 通用回答
+                return "答案: 144, 因为 12 个 12 相加"
+            v = task["verification"]
+            marker = (v.get("gate") or v).get("marker", "答案")
+            strict = prompt.startswith(ns.get("STRICT", "严格")) or "草稿" in prompt or "draft" in prompt
+            if task["id"] == "date":
+                return f"{marker}: 2024-03-05" if strict else "2024-03-05"
+            if task["id"] == "sum-explained":
+                why = ", 因为 12 个 12 相加 / because twelve twelves" if model != "model-b" else ""
+                return f"{marker}: 144{why}"
+            return task["observations"][0]["observation"]        # summary: 逐字复述资料 -> grounded
+        return call
+    return make_call
 
 
 def _blocks(name):
@@ -50,29 +61,32 @@ def _blocks(name):
 def _run(name):
     blocks = _blocks(name)
     assert len(blocks) >= 5, f"{name}: 期望至少 5 个 python 块, 得 {len(blocks)}"
-    ns = _fakes()
+    ns = {"judge": _judge, "scores_a": [1, 0, 1, 1, 0, 1, 1, 0], "scores_b": [1, 0, 0, 1, 0, 0, 1, 0]}
+    ns["answer"] = "答案: 144, 因为 12 个 12 相加 / Answer: 144, because twelve twelves"
     printed = []
-    ns["print"] = lambda *a, **k: printed.append(" ".join(str(x) for x in a))
-    # required_pairs 内部真跑蒙特卡洛(~20s): 示例代码原样执行, 但把默认精度调低 —— 测的是 API 契约, 不是那个数
-    real_rp = pe.required_pairs
-    pe.required_pairs = functools.partial(real_rp, sims=6, resamples=300)
+    ns["print"] = lambda *a, sep=" ", end="\n", **k: printed.append(sep.join(str(x) for x in a))
+    real = (ad.make_call, ad.make_llm, pe.required_pairs)
+    ad.make_call = _fake_call_factory(ns)
+    ad.make_llm = lambda model=None, **kw: _judge
+    pe.required_pairs = functools.partial(real[2], sims=6, resamples=300)   # 示例原样执行, 只调低蒙特卡洛精度
     try:
         for i, code in enumerate(blocks):
             exec(compile(code, f"{name}:block{i}", "exec"), ns)
-            if "tasks" in ns and not ns["_instr"]:        # tasks 块刚执行: 把指令映射到答案, 供假模型用
-                ns["_instr"].update({t["instruction"]: ns["_answers"][t["id"]] for t in ns["tasks"]})
     finally:
-        pe.required_pairs = real_rp
-    # A/B 块: bare 只在 JSON 题上失败 -> 1/2 有信息, strict 触顶, 8 个不一致对全偏 strict
-    rp = [p for p in printed if "不一致对" in p]
-    assert len(rp) == 1, printed
-    text = rp[0]
-    assert "有效样本: 1/2" in text and "触顶(1.000): strict" in text, text
-    assert "不一致对 0:8" in text and "显著" in text, text
-    # evaluate 块
-    assert any(p.startswith("1.0 0") for p in printed), printed
-    # 样本量块: 四行都执行到了(命名空间里留下的表达式不留痕, 用副作用检查最后一行)
+        ad.make_call, ad.make_llm, pe.required_pairs = real
+    # 1) gated 示例: 答对且解释 -> 1.0, verdict None
+    assert any(p.startswith("1.0 None") for p in printed), printed
+    # 2) 三个对象各一份报告, 且每个维度都有可观察差异(不一致对不全为 0)
+    reports = {p.split("\n", 1)[0]: p for p in printed if "\n" in p and ("不一致对" in p or "discordant" in p)}
+    assert set(reports) == {"model", "harness", "agent"}, list(reports)
+    for axis, text in reports.items():
+        pairs = re.findall(r"(?:不一致对|discordant) (\d+):(\d+)", text)
+        assert pairs and any(int(a) + int(b) > 0 for a, b in pairs), f"{axis} 维度应有不一致对: {text}"
+    # model 维度: gated 题把"答对但不解释"的 model-b 判掉 -> A 胜
+    assert re.search(r"(?:不一致对|discordant) (\d+):0", reports["model"]), reports["model"]
+    # 3) 样本量块跑到了末行
     assert ns["pe"].interpret(ns["pe"].paired_compare(ns["scores_a"], ns["scores_b"]))["verdict"] == "null"
+    assert len(ns["my_tasks"]) == 3 and {t["verification"]["class"] for t in ns["my_tasks"]} == {"exact", "gated", "trajectory"}
     return ns
 
 
@@ -92,6 +106,7 @@ def test_demo_output_in_readme_matches_actual():
         actual = "\n".join(lines)
         text = (ROOT / name).read_text(encoding="utf-8")
         assert actual in text, f"{name}: 贴的 demo 输出与实际不一致。实际:\n{actual}"
+        assert "桩" in text or "stub" in text, f"{name}: 必须说明 demo 里是桩系统, 不是模型"
 
 
 def test_readme_numbers_and_links_are_true():
@@ -105,14 +120,18 @@ def test_readme_numbers_and_links_are_true():
                  "CHANGELOG.md", "examples/adapter_openai_compat.py"):
         assert path in zh and path in en, path
         assert (ROOT / path).exists(), path
-    # API 表里出现的每个反引号名字都必须是 paired_eval 的真实导出
     tables = (zh.split("## API 一览")[1].split("## 范围")[0], en.split("## API overview")[1].split("## Scope")[0])
     for table in tables:
         for name in set(re.findall(r"`([a-zA-Z_]+)`", table)):
-            if name in ("import", "pe"):
+            if name in ("import", "pe", "exact", "retrieval", "trajectory", "rubric", "gated"):
                 continue
             assert name in pe.__all__ or hasattr(pe, name), f"API 表列了不存在的名字: {name}"
     assert not re.search(r"\d+ 个测试|\d+ tests", zh + en), "README 不写测试数 —— 它会过期(实测过一次)"
+    # 三个评测对象与"先验后判"的原则必须出现在首屏(第一个 ## 之前或前两节)
+    for text, words in ((zh, ("model", "harness", "agent", "gate")), (en, ("model", "harness", "agent", "gate"))):
+        head = text.split("## ")[0] + "## ".join(text.split("## ")[1:3])
+        for w in words:
+            assert w in head, f"首屏缺 {w}"
 
 
 if __name__ == "__main__":

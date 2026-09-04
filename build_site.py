@@ -29,25 +29,58 @@ def demo_output(lang):
 
 
 TASKS_CODE_ZH = '''import paired_eval as pe
+from examples.adapter_openai_compat import make_call, make_llm     # 只用标准库的 OpenAI 兼容适配器
 
-tasks = [
-    {"id": "date-iso", "instruction": "把 2024年3月5日 写成 ISO 8601 日期, 只输出日期",
-     "check": lambda r: r.strip() == "2024-03-05", "canonical": "2024-03-05"},
-    {"id": "json-pair", "instruction": '输出 JSON 对象 {"a": 1}, 不要其他内容',
-     "check": lambda r: r.strip() == '{"a": 1}', "canonical": '{"a": 1}'},
+my_tasks = [   # 按"有什么可验"混搭: 有真值 -> exact; 有真值又要看质量 -> gated; 只有资料 -> trajectory
+    {"id": "date", "instruction": "把 2024年3月5日 写成 ISO 8601 日期; 以「答案: 」开头给出",
+     "verification": {"class": "exact", "gold": "2024-03-05"}},
+    {"id": "sum-explained", "instruction": "12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果",
+     "verification": {"class": "gated",
+                      "gate":  {"class": "exact", "gold": "144", "kind": "numeric"},
+                      "score": {"class": "rubric", "criteria": [{"text": "说明了计算过程", "weight": 1}]}}},
 ]
-systems = {"strict": pe.make_model(call_strict), "bare": pe.make_model(call_bare)}   # 任何 call(prompt) -> str
+call_a, call_b, judge = make_call(model="model-a"), make_call(model="model-b"), make_llm(model="judge-model")
+tasks = pe.bench_tasks(my_tasks, threshold=1.0, llm=judge)        # judge 评分的题也进同一套配对流水线
 
-run = pe.run_interleaved(systems, tasks=tasks, n=8, prompt_prefix="")
-print(pe.report(run["reports"], refusals=run["refusals"])["text"])'''
+STRICT = "严格按要求输出, 不要任何多余内容。要求: "
+runs = {
+    "model":   pe.run_interleaved({"A": pe.make_model(call_a), "B": pe.make_model(call_b)}, tasks=tasks, n=6, prompt_prefix=STRICT),
+    "harness": pe.run_interleaved({"strict": pe.make_model(lambda p: call_a(STRICT + p)), "bare": pe.make_model(call_a)}, tasks=tasks, n=6, prompt_prefix=""),
+}
+for axis, run in runs.items():
+    print(axis, pe.report(run["reports"], refusals=run["refusals"])["text"], sep="\\n")'''
 
-TASKS_CODE_EN = TASKS_CODE_ZH.replace(
-    '"把 2024年3月5日 写成 ISO 8601 日期, 只输出日期"', '"Write 5 March 2024 as an ISO 8601 date. Output only the date."'
-).replace(
-    "'输出 JSON 对象 {\"a\": 1}, 不要其他内容'", "'Output the JSON object {\"a\": 1} and nothing else.'"
-).replace("# 任何 call(prompt) -> str", "# any call(prompt) -> str")
+TASKS_CODE_EN = (TASKS_CODE_ZH
+    .replace("# 只用标准库的 OpenAI 兼容适配器", "# standard-library-only OpenAI-compatible adapter")
+    .replace("# 按\"有什么可验\"混搭: 有真值 -> exact; 有真值又要看质量 -> gated; 只有资料 -> trajectory",
+             "# mix by what can be verified: ground truth -> exact; truth + quality bar -> gated; only sources -> trajectory")
+    .replace("把 2024年3月5日 写成 ISO 8601 日期; 以「答案: 」开头给出", "Write 5 March 2024 as an ISO 8601 date, starting with \'Answer: \'")
+    .replace('"gold": "2024-03-05"}', '"gold": "2024-03-05", "marker": "Answer"}')
+    .replace("12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果", "What is 12×12? Explain, and give the result starting with \'Answer: \'")
+    .replace('"kind": "numeric"}', '"kind": "numeric", "marker": "Answer"}')
+    .replace("说明了计算过程", "explains the calculation")
+    .replace("# judge 评分的题也进同一套配对流水线", "# judge-scored tasks flow through the same paired pipeline")
+    .replace("严格按要求输出, 不要任何多余内容。要求: ", "Follow the format exactly, no extra text. Task: ")
+    .replace('refusals=run["refusals"])', 'refusals=run["refusals"], lang="en")'))
+
+GATED_CODE_ZH = '''task = {"id": "sum-explained", "instruction": "12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果",
+        "verification": {"class": "gated",
+                         "gate":  {"class": "exact", "gold": "144", "kind": "numeric"},
+                         "score": {"class": "rubric", "criteria": [{"text": "说明了计算过程", "weight": 1}]}}}
+r = pe.evaluate(task, response=answer, llm=judge)
+print(r["score"], r["verdict"])        # 答错 -> 0.0 'gated_out'(judge 一次都没调用); 答对 -> rubric 分'''
+
+GATED_CODE_EN = (GATED_CODE_ZH
+    .replace("12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果", "What is 12×12? Explain, and give the result starting with \'Answer: \'")
+    .replace('"kind": "numeric"}', '"kind": "numeric", "marker": "Answer"}')
+    .replace("说明了计算过程", "explains the calculation")
+    .replace("# 答错 -> 0.0 'gated_out'(judge 一次都没调用); 答对 -> rubric 分", "# wrong -> 0.0 'gated_out' (judge never called); right -> the rubric score"))
 
 FEATURES = [
+    ("三个对象各固定各的变量", "评 model 固定脚手架、评 harness 固定模型、评 agent 固定两者只换策略；2×2 因子看交互。",
+     "Three objects, each holding its own variable constant", "Model with the scaffold fixed, harness with the model fixed, agent with both fixed; a 2×2 for the interaction."),
+    ("程序做 gate，rubric 做 score", "gated 类：验不过直接 0 分且不调用评委；验过的才由 rubric 分质量。",
+     "The program gates, the rubric scores", "gated class: failing the gate scores 0 and never calls the judge; only passing answers are ranked by the rubric."),
     ("同题交错重复、逐题配对", "不是两个独立均值的差；报效应量与 bootstrap 区间。",
      "Interleaved repeats, paired per task", "Not a difference of independent means; effect size with a bootstrap interval."),
     ("配对精确检验", "McNemar（二值）、符号翻转置换（连续分），Holm 校正；不假设正态。",
@@ -58,8 +91,8 @@ FEATURES = [
      "Informative-sample and ceiling diagnostics", "Which tasks contribute nothing; which system's perfect score compresses the effect."),
     ("事前样本量规划", "required_tasks / required_pairs 内部真跑将要使用的检验，不用闭式近似。",
      "Sample-size planning", "required_tasks / required_pairs run the very test that will be used, not a closed-form approximation."),
-    ("可组合的验证器", "精确匹配 → 程序判定 → 检索核实 → agent 轨迹忠实性 → rubric（自带 canary）。",
-     "Composable verifiers", "Exact match → programmatic check → retrieval → agent-trajectory faithfulness → rubric (with a canary)."),
+    ("rubric 自身要过 canary", "一份会被糊弄回答骗过的 rubric 不能用来评分；rubric_canary 先测分离度。",
+     "The rubric itself must pass a canary", "A rubric that a bluffing answer can game is not fit to score; rubric_canary measures the separation first."),
 ]
 
 VERDICTS = [
@@ -150,8 +183,8 @@ def build():
 <header class="hero"><div class="wrap">
 <img src="assets/logo.svg" alt="paired-eval" width="88" height="88">
 <h1>paired-eval</h1>
-{zh_en("比较两个 LLM 系统——不同的模型、提示、脚手架或 agent 策略——哪个更好，结论有多可靠，样本够不够。",
-       "Compare two LLM systems — models, prompts, scaffolds or agent strategies — and learn which is better, how reliable that is, and whether you have enough samples.", "p", "tagline")}
+{zh_en("给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。",
+       "Evaluate models, agents and harnesses: verify programmatically whatever can be verified, hand the rest to a rubric — and make every comparison a statistically honest paired one.", "p", "tagline")}
 <div class="actions">
 <a class="btn primary" href="{REPO}">GitHub</a>
 <a class="btn" href="{REPO}/blob/main/README.md">{zh_en("README", "README（中文）")}</a>
@@ -164,10 +197,31 @@ def build():
 </div></header>
 
 <main class="wrap">
+<section id="objects">
+<h2>{zh_en("它评什么", "What it evaluates")}</h2>
+<p class="lead">{zh_en("三个对象问的是三个不同的问题，各自固定不同的变量；混着评什么都得不到。",
+                       "The three objects ask three different questions and hold different things constant; mixing them up yields nothing.")}</p>
+<table><tbody>
+<tr><th>{zh_en("评什么", "Evaluate")}</th><th>{zh_en("固定什么", "Hold constant")}</th><th>{zh_en("换什么", "Vary")}</th></tr>
+<tr><td><strong>model</strong></td><td>{zh_en("同一批题、同一脚手架", "same tasks, same scaffold")}</td><td>{zh_en("模型", "the model")}</td></tr>
+<tr><td><strong>harness</strong></td><td>{zh_en("同一模型", "same model")}</td><td>{zh_en("提示 / 脚手架 / 工具接线", "prompt / scaffold / tool wiring")}</td></tr>
+<tr><td><strong>agent</strong></td><td>{zh_en("同一模型、同一脚手架", "same model, same scaffold")}</td><td>{zh_en("策略（单遍 vs 自检修正…）", "the strategy (one pass vs self-check…)")}</td></tr>
+<tr><td><strong>{zh_en("交互", "interaction")}</strong></td><td colspan="2">{zh_en("2×2 因子设计：同一把尺子上比主效应，自动报出天花板", "2×2 factorial: main effects on one scale, ceilings flagged automatically")}</td></tr>
+</tbody></table>
+</section>
+
+<section id="verify">
+<h2>{zh_en("怎么验：能用程序验的先验，验不过的再判", "How it verifies: programmatic checks first, judges only for the rest")}</h2>
+<p class="lead">{zh_en("有唯一真值 → exact 或程序判定；只有事实来源 → retrieval / trajectory（逐条 claim grounding）；只有质量标准 → rubric（自身要过 canary）。层可叠加：<strong>程序做 gate，rubric 做 score</strong>——验不过直接 0 分且不调用评委。",
+                       "A unique ground truth → exact or a programmatic check; only sources of fact → retrieval / trajectory (per-claim grounding); only a quality bar → rubric (which must pass a canary). Layers stack: <strong>the program gates, the rubric scores</strong> — failing the gate scores 0 and never calls the judge.")}</p>
+<pre class="zh"><code>{e(GATED_CODE_ZH)}</code></pre>
+<pre class="en"><code>{e(GATED_CODE_EN)}</code></pre>
+</section>
+
 <section id="demo">
-<h2>{zh_en("十秒钟看效果", "Ten seconds")}</h2>
-<p class="lead">{zh_en("两个桩系统在 4 道内置格式题上做配对 A/B，不需要任何 API。下面是真实输出（由测试与当前代码逐行比对）。",
-                       "Two stub systems run a paired A/B on 4 built-in format tasks, no API needed. Actual output below (a test keeps it identical to the current code).")}</p>
+<h2>{zh_en("十秒钟看效果（统计层的离线演示）", "Ten seconds (an offline demo of the statistics layer)")}</h2>
+<p class="lead">{zh_en("<strong>这里的 strict / bare 是两个桩函数，不是模型</strong>——它们复刻一种真实观察到的失败机理（裸指令下正确答案被包进 markdown 围栏），只为在没有 API 时展示报告的形状。输出是真的（由测试与当前代码逐行比对）。",
+                       "<strong>strict / bare here are two stub functions, not models</strong> — they replay one real failure mechanism (a bare prompt wraps the correct JSON in markdown fences), only to show the shape of a report without any API. The output is real (a test keeps it identical to the current code).")}</p>
 <pre class="zh"><code>$ python3 paired_eval.py
 {e(demo_zh)}</code></pre>
 <pre class="en"><code>$ python3 paired_eval.py --lang en
@@ -193,13 +247,13 @@ def build():
 </section>
 
 <section id="usage">
-<h2>{zh_en("用你自己的系统和任务", "Your own systems and tasks")}</h2>
-<p class="lead">{zh_en("一个任务 = 指令 + 程序判定器 + 一个合法输出样例。任何 <code class='inl'>call(prompt) -&gt; str</code> 都能接上；<code class='inl'>make_model</code> 负责有界重试，持续失败转为“拒答”成对丢弃。",
-                       "A task = an instruction + a programmatic checker + one valid output. Any <code class='inl'>call(prompt) -&gt; str</code> plugs in; <code class='inl'>make_model</code> adds bounded retries and drops persistent failures pairwise as refusals.")}</p>
+<h2>{zh_en("用真实模型：三个对象各做一次 A/B", "With real models: one A/B per object")}</h2>
+<p class="lead">{zh_en("任务按“有什么可验”混搭验证类；<code class='inl'>bench_tasks</code> 把 judge 评分的题按显式阈值二值化，进同一套配对流水线；三个维度各固定各的变量。",
+                       "Mix verification classes by what can be verified; <code class='inl'>bench_tasks</code> binarises judge-scored tasks at an explicit threshold so they flow through the same paired pipeline; each axis holds its own variable constant.")}</p>
 <pre class="zh"><code>{e(TASKS_CODE_ZH)}</code></pre>
 <pre class="en"><code>{e(TASKS_CODE_EN)}</code></pre>
-<p class="read">{zh_en("还能做：评 agent 回答是否忠实于它看到的观察（逐条 claim grounding）、rubric 评分并检验 rubric 自身、事前样本量规划、筛出有区分力的题。见 README。",
-                        "Also: score whether an agent's answer is faithful to its observations (per-claim grounding), rubric judging with a self-check canary, sample-size planning, and screening for tasks that discriminate. See the README.")}</p>
+<p class="read">{zh_en("agent 维度同理：同一模型同一脚手架，比“单遍”与“出草稿后自检修正”。还能做：事前样本量规划（required_tasks / required_pairs）、筛出有区分力的题（screen_tasks / screen_graded）。完整示例见 README。",
+                        "The agent axis works the same way: same model, same scaffold, one pass vs draft-then-self-correct. Also: sample-size planning (required_tasks / required_pairs) and screening for tasks that discriminate (screen_tasks / screen_graded). Full example in the README.")}</p>
 </section>
 
 <section id="related">

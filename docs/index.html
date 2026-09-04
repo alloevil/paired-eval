@@ -44,7 +44,7 @@ code.inl{background:var(--card);border:1px solid var(--line);border-radius:5px;p
 <header class="hero"><div class="wrap">
 <img src="assets/logo.svg" alt="paired-eval" width="88" height="88">
 <h1>paired-eval</h1>
-<p class="zh tagline">比较两个 LLM 系统——不同的模型、提示、脚手架或 agent 策略——哪个更好，结论有多可靠，样本够不够。</p><p class="en tagline">Compare two LLM systems — models, prompts, scaffolds or agent strategies — and learn which is better, how reliable that is, and whether you have enough samples.</p>
+<p class="zh tagline">给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。</p><p class="en tagline">Evaluate models, agents and harnesses: verify programmatically whatever can be verified, hand the rest to a rubric — and make every comparison a statistically honest paired one.</p>
 <div class="actions">
 <a class="btn primary" href="https://github.com/alloevil/paired-eval">GitHub</a>
 <a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.md"><span class="zh">README</span><span class="en">README（中文）</span></a>
@@ -53,13 +53,42 @@ code.inl{background:var(--card);border:1px solid var(--line);border-radius:5px;p
 <button class="btn lang" id="lang" type="button">English</button>
 </div>
 <pre class="install"><code>pip install git+https://github.com/alloevil/paired-eval.git</code></pre>
-<p class="meta">v0.2.0 · MIT · Python ≥ 3.9 · <span class="zh">零第三方依赖 · 模型调用由你注入</span><span class="en">no third-party dependencies · you inject the model call</span></p>
+<p class="meta">v0.3.0 · MIT · Python ≥ 3.9 · <span class="zh">零第三方依赖 · 模型调用由你注入</span><span class="en">no third-party dependencies · you inject the model call</span></p>
 </div></header>
 
 <main class="wrap">
+<section id="objects">
+<h2><span class="zh">它评什么</span><span class="en">What it evaluates</span></h2>
+<p class="lead"><span class="zh">三个对象问的是三个不同的问题，各自固定不同的变量；混着评什么都得不到。</span><span class="en">The three objects ask three different questions and hold different things constant; mixing them up yields nothing.</span></p>
+<table><tbody>
+<tr><th><span class="zh">评什么</span><span class="en">Evaluate</span></th><th><span class="zh">固定什么</span><span class="en">Hold constant</span></th><th><span class="zh">换什么</span><span class="en">Vary</span></th></tr>
+<tr><td><strong>model</strong></td><td><span class="zh">同一批题、同一脚手架</span><span class="en">same tasks, same scaffold</span></td><td><span class="zh">模型</span><span class="en">the model</span></td></tr>
+<tr><td><strong>harness</strong></td><td><span class="zh">同一模型</span><span class="en">same model</span></td><td><span class="zh">提示 / 脚手架 / 工具接线</span><span class="en">prompt / scaffold / tool wiring</span></td></tr>
+<tr><td><strong>agent</strong></td><td><span class="zh">同一模型、同一脚手架</span><span class="en">same model, same scaffold</span></td><td><span class="zh">策略（单遍 vs 自检修正…）</span><span class="en">the strategy (one pass vs self-check…)</span></td></tr>
+<tr><td><strong><span class="zh">交互</span><span class="en">interaction</span></strong></td><td colspan="2"><span class="zh">2×2 因子设计：同一把尺子上比主效应，自动报出天花板</span><span class="en">2×2 factorial: main effects on one scale, ceilings flagged automatically</span></td></tr>
+</tbody></table>
+</section>
+
+<section id="verify">
+<h2><span class="zh">怎么验：能用程序验的先验，验不过的再判</span><span class="en">How it verifies: programmatic checks first, judges only for the rest</span></h2>
+<p class="lead"><span class="zh">有唯一真值 → exact 或程序判定；只有事实来源 → retrieval / trajectory（逐条 claim grounding）；只有质量标准 → rubric（自身要过 canary）。层可叠加：<strong>程序做 gate，rubric 做 score</strong>——验不过直接 0 分且不调用评委。</span><span class="en">A unique ground truth → exact or a programmatic check; only sources of fact → retrieval / trajectory (per-claim grounding); only a quality bar → rubric (which must pass a canary). Layers stack: <strong>the program gates, the rubric scores</strong> — failing the gate scores 0 and never calls the judge.</span></p>
+<pre class="zh"><code>task = {&quot;id&quot;: &quot;sum-explained&quot;, &quot;instruction&quot;: &quot;12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果&quot;,
+        &quot;verification&quot;: {&quot;class&quot;: &quot;gated&quot;,
+                         &quot;gate&quot;:  {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;144&quot;, &quot;kind&quot;: &quot;numeric&quot;},
+                         &quot;score&quot;: {&quot;class&quot;: &quot;rubric&quot;, &quot;criteria&quot;: [{&quot;text&quot;: &quot;说明了计算过程&quot;, &quot;weight&quot;: 1}]}}}
+r = pe.evaluate(task, response=answer, llm=judge)
+print(r[&quot;score&quot;], r[&quot;verdict&quot;])        # 答错 -&gt; 0.0 &#x27;gated_out&#x27;(judge 一次都没调用); 答对 -&gt; rubric 分</code></pre>
+<pre class="en"><code>task = {&quot;id&quot;: &quot;sum-explained&quot;, &quot;instruction&quot;: &quot;What is 12×12? Explain, and give the result starting with &#x27;Answer: &#x27;&quot;,
+        &quot;verification&quot;: {&quot;class&quot;: &quot;gated&quot;,
+                         &quot;gate&quot;:  {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;144&quot;, &quot;kind&quot;: &quot;numeric&quot;, &quot;marker&quot;: &quot;Answer&quot;},
+                         &quot;score&quot;: {&quot;class&quot;: &quot;rubric&quot;, &quot;criteria&quot;: [{&quot;text&quot;: &quot;explains the calculation&quot;, &quot;weight&quot;: 1}]}}}
+r = pe.evaluate(task, response=answer, llm=judge)
+print(r[&quot;score&quot;], r[&quot;verdict&quot;])        # wrong -&gt; 0.0 &#x27;gated_out&#x27; (judge never called); right -&gt; the rubric score</code></pre>
+</section>
+
 <section id="demo">
-<h2><span class="zh">十秒钟看效果</span><span class="en">Ten seconds</span></h2>
-<p class="lead"><span class="zh">两个桩系统在 4 道内置格式题上做配对 A/B，不需要任何 API。下面是真实输出（由测试与当前代码逐行比对）。</span><span class="en">Two stub systems run a paired A/B on 4 built-in format tasks, no API needed. Actual output below (a test keeps it identical to the current code).</span></p>
+<h2><span class="zh">十秒钟看效果（统计层的离线演示）</span><span class="en">Ten seconds (an offline demo of the statistics layer)</span></h2>
+<p class="lead"><span class="zh"><strong>这里的 strict / bare 是两个桩函数，不是模型</strong>——它们复刻一种真实观察到的失败机理（裸指令下正确答案被包进 markdown 围栏），只为在没有 API 时展示报告的形状。输出是真的（由测试与当前代码逐行比对）。</span><span class="en"><strong>strict / bare here are two stub functions, not models</strong> — they replay one real failure mechanism (a bare prompt wraps the correct JSON in markdown fences), only to show the shape of a report without any API. The output is real (a test keeps it identical to the current code).</span></p>
 <pre class="zh"><code>$ python3 paired_eval.py
 有效样本: 2/4 题有信息(恒过 2, 恒败 0)
 拒答: {&#x27;strict&#x27;: 0, &#x27;bare&#x27;: 0}
@@ -76,12 +105,14 @@ bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNe
 <section id="features">
 <h2><span class="zh">特性</span><span class="en">Features</span></h2>
 <div class="grid">
+<div class="card"><h3><span class="zh">三个对象各固定各的变量</span><span class="en">Three objects, each holding its own variable constant</span></h3><p><span class="zh">评 model 固定脚手架、评 harness 固定模型、评 agent 固定两者只换策略；2×2 因子看交互。</span><span class="en">Model with the scaffold fixed, harness with the model fixed, agent with both fixed; a 2×2 for the interaction.</span></p></div>
+<div class="card"><h3><span class="zh">程序做 gate，rubric 做 score</span><span class="en">The program gates, the rubric scores</span></h3><p><span class="zh">gated 类：验不过直接 0 分且不调用评委；验过的才由 rubric 分质量。</span><span class="en">gated class: failing the gate scores 0 and never calls the judge; only passing answers are ranked by the rubric.</span></p></div>
 <div class="card"><h3><span class="zh">同题交错重复、逐题配对</span><span class="en">Interleaved repeats, paired per task</span></h3><p><span class="zh">不是两个独立均值的差；报效应量与 bootstrap 区间。</span><span class="en">Not a difference of independent means; effect size with a bootstrap interval.</span></p></div>
 <div class="card"><h3><span class="zh">配对精确检验</span><span class="en">Exact paired tests</span></h3><p><span class="zh">McNemar（二值）、符号翻转置换（连续分），Holm 校正；不假设正态。</span><span class="en">McNemar (binary), sign-flip permutation (continuous), Holm correction; no normality assumption.</span></p></div>
 <div class="card"><h3><span class="zh">四种结论，不是一个 p 值</span><span class="en">Four verdicts, not one p-value</span></h3><p><span class="zh">显著 / 有界的 null / 无信息 / 检验无力——缺的是不一致对还是单元，处方不同。</span><span class="en">Significant / bounded null / uninformative / powerless — and whether what&#x27;s missing is discordant pairs or units.</span></p></div>
 <div class="card"><h3><span class="zh">有效样本与触顶诊断</span><span class="en">Informative-sample and ceiling diagnostics</span></h3><p><span class="zh">哪些题没在贡献信息、哪个系统满分导致效应被压缩。</span><span class="en">Which tasks contribute nothing; which system&#x27;s perfect score compresses the effect.</span></p></div>
 <div class="card"><h3><span class="zh">事前样本量规划</span><span class="en">Sample-size planning</span></h3><p><span class="zh">required_tasks / required_pairs 内部真跑将要使用的检验，不用闭式近似。</span><span class="en">required_tasks / required_pairs run the very test that will be used, not a closed-form approximation.</span></p></div>
-<div class="card"><h3><span class="zh">可组合的验证器</span><span class="en">Composable verifiers</span></h3><p><span class="zh">精确匹配 → 程序判定 → 检索核实 → agent 轨迹忠实性 → rubric（自带 canary）。</span><span class="en">Exact match → programmatic check → retrieval → agent-trajectory faithfulness → rubric (with a canary).</span></p></div>
+<div class="card"><h3><span class="zh">rubric 自身要过 canary</span><span class="en">The rubric itself must pass a canary</span></h3><p><span class="zh">一份会被糊弄回答骗过的 rubric 不能用来评分；rubric_canary 先测分离度。</span><span class="en">A rubric that a bluffing answer can game is not fit to score; rubric_canary measures the separation first.</span></p></div>
 </div>
 </section>
 
@@ -97,33 +128,51 @@ bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNe
 </section>
 
 <section id="usage">
-<h2><span class="zh">用你自己的系统和任务</span><span class="en">Your own systems and tasks</span></h2>
-<p class="lead"><span class="zh">一个任务 = 指令 + 程序判定器 + 一个合法输出样例。任何 <code class='inl'>call(prompt) -&gt; str</code> 都能接上；<code class='inl'>make_model</code> 负责有界重试，持续失败转为“拒答”成对丢弃。</span><span class="en">A task = an instruction + a programmatic checker + one valid output. Any <code class='inl'>call(prompt) -&gt; str</code> plugs in; <code class='inl'>make_model</code> adds bounded retries and drops persistent failures pairwise as refusals.</span></p>
+<h2><span class="zh">用真实模型：三个对象各做一次 A/B</span><span class="en">With real models: one A/B per object</span></h2>
+<p class="lead"><span class="zh">任务按“有什么可验”混搭验证类；<code class='inl'>bench_tasks</code> 把 judge 评分的题按显式阈值二值化，进同一套配对流水线；三个维度各固定各的变量。</span><span class="en">Mix verification classes by what can be verified; <code class='inl'>bench_tasks</code> binarises judge-scored tasks at an explicit threshold so they flow through the same paired pipeline; each axis holds its own variable constant.</span></p>
 <pre class="zh"><code>import paired_eval as pe
+from examples.adapter_openai_compat import make_call, make_llm     # 只用标准库的 OpenAI 兼容适配器
 
-tasks = [
-    {&quot;id&quot;: &quot;date-iso&quot;, &quot;instruction&quot;: &quot;把 2024年3月5日 写成 ISO 8601 日期, 只输出日期&quot;,
-     &quot;check&quot;: lambda r: r.strip() == &quot;2024-03-05&quot;, &quot;canonical&quot;: &quot;2024-03-05&quot;},
-    {&quot;id&quot;: &quot;json-pair&quot;, &quot;instruction&quot;: &#x27;输出 JSON 对象 {&quot;a&quot;: 1}, 不要其他内容&#x27;,
-     &quot;check&quot;: lambda r: r.strip() == &#x27;{&quot;a&quot;: 1}&#x27;, &quot;canonical&quot;: &#x27;{&quot;a&quot;: 1}&#x27;},
+my_tasks = [   # 按&quot;有什么可验&quot;混搭: 有真值 -&gt; exact; 有真值又要看质量 -&gt; gated; 只有资料 -&gt; trajectory
+    {&quot;id&quot;: &quot;date&quot;, &quot;instruction&quot;: &quot;把 2024年3月5日 写成 ISO 8601 日期; 以「答案: 」开头给出&quot;,
+     &quot;verification&quot;: {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;2024-03-05&quot;}},
+    {&quot;id&quot;: &quot;sum-explained&quot;, &quot;instruction&quot;: &quot;12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果&quot;,
+     &quot;verification&quot;: {&quot;class&quot;: &quot;gated&quot;,
+                      &quot;gate&quot;:  {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;144&quot;, &quot;kind&quot;: &quot;numeric&quot;},
+                      &quot;score&quot;: {&quot;class&quot;: &quot;rubric&quot;, &quot;criteria&quot;: [{&quot;text&quot;: &quot;说明了计算过程&quot;, &quot;weight&quot;: 1}]}}},
 ]
-systems = {&quot;strict&quot;: pe.make_model(call_strict), &quot;bare&quot;: pe.make_model(call_bare)}   # 任何 call(prompt) -&gt; str
+call_a, call_b, judge = make_call(model=&quot;model-a&quot;), make_call(model=&quot;model-b&quot;), make_llm(model=&quot;judge-model&quot;)
+tasks = pe.bench_tasks(my_tasks, threshold=1.0, llm=judge)        # judge 评分的题也进同一套配对流水线
 
-run = pe.run_interleaved(systems, tasks=tasks, n=8, prompt_prefix=&quot;&quot;)
-print(pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&quot;text&quot;])</code></pre>
+STRICT = &quot;严格按要求输出, 不要任何多余内容。要求: &quot;
+runs = {
+    &quot;model&quot;:   pe.run_interleaved({&quot;A&quot;: pe.make_model(call_a), &quot;B&quot;: pe.make_model(call_b)}, tasks=tasks, n=6, prompt_prefix=STRICT),
+    &quot;harness&quot;: pe.run_interleaved({&quot;strict&quot;: pe.make_model(lambda p: call_a(STRICT + p)), &quot;bare&quot;: pe.make_model(call_a)}, tasks=tasks, n=6, prompt_prefix=&quot;&quot;),
+}
+for axis, run in runs.items():
+    print(axis, pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&quot;text&quot;], sep=&quot;\n&quot;)</code></pre>
 <pre class="en"><code>import paired_eval as pe
+from examples.adapter_openai_compat import make_call, make_llm     # standard-library-only OpenAI-compatible adapter
 
-tasks = [
-    {&quot;id&quot;: &quot;date-iso&quot;, &quot;instruction&quot;: &quot;Write 5 March 2024 as an ISO 8601 date. Output only the date.&quot;,
-     &quot;check&quot;: lambda r: r.strip() == &quot;2024-03-05&quot;, &quot;canonical&quot;: &quot;2024-03-05&quot;},
-    {&quot;id&quot;: &quot;json-pair&quot;, &quot;instruction&quot;: &#x27;Output the JSON object {&quot;a&quot;: 1} and nothing else.&#x27;,
-     &quot;check&quot;: lambda r: r.strip() == &#x27;{&quot;a&quot;: 1}&#x27;, &quot;canonical&quot;: &#x27;{&quot;a&quot;: 1}&#x27;},
+my_tasks = [   # mix by what can be verified: ground truth -&gt; exact; truth + quality bar -&gt; gated; only sources -&gt; trajectory
+    {&quot;id&quot;: &quot;date&quot;, &quot;instruction&quot;: &quot;Write 5 March 2024 as an ISO 8601 date, starting with &#x27;Answer: &#x27;&quot;,
+     &quot;verification&quot;: {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;2024-03-05&quot;, &quot;marker&quot;: &quot;Answer&quot;}},
+    {&quot;id&quot;: &quot;sum-explained&quot;, &quot;instruction&quot;: &quot;What is 12×12? Explain, and give the result starting with &#x27;Answer: &#x27;&quot;,
+     &quot;verification&quot;: {&quot;class&quot;: &quot;gated&quot;,
+                      &quot;gate&quot;:  {&quot;class&quot;: &quot;exact&quot;, &quot;gold&quot;: &quot;144&quot;, &quot;kind&quot;: &quot;numeric&quot;, &quot;marker&quot;: &quot;Answer&quot;},
+                      &quot;score&quot;: {&quot;class&quot;: &quot;rubric&quot;, &quot;criteria&quot;: [{&quot;text&quot;: &quot;explains the calculation&quot;, &quot;weight&quot;: 1}]}}},
 ]
-systems = {&quot;strict&quot;: pe.make_model(call_strict), &quot;bare&quot;: pe.make_model(call_bare)}   # any call(prompt) -&gt; str
+call_a, call_b, judge = make_call(model=&quot;model-a&quot;), make_call(model=&quot;model-b&quot;), make_llm(model=&quot;judge-model&quot;)
+tasks = pe.bench_tasks(my_tasks, threshold=1.0, llm=judge)        # judge-scored tasks flow through the same paired pipeline
 
-run = pe.run_interleaved(systems, tasks=tasks, n=8, prompt_prefix=&quot;&quot;)
-print(pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&quot;text&quot;])</code></pre>
-<p class="read"><span class="zh">还能做：评 agent 回答是否忠实于它看到的观察（逐条 claim grounding）、rubric 评分并检验 rubric 自身、事前样本量规划、筛出有区分力的题。见 README。</span><span class="en">Also: score whether an agent's answer is faithful to its observations (per-claim grounding), rubric judging with a self-check canary, sample-size planning, and screening for tasks that discriminate. See the README.</span></p>
+STRICT = &quot;Follow the format exactly, no extra text. Task: &quot;
+runs = {
+    &quot;model&quot;:   pe.run_interleaved({&quot;A&quot;: pe.make_model(call_a), &quot;B&quot;: pe.make_model(call_b)}, tasks=tasks, n=6, prompt_prefix=STRICT),
+    &quot;harness&quot;: pe.run_interleaved({&quot;strict&quot;: pe.make_model(lambda p: call_a(STRICT + p)), &quot;bare&quot;: pe.make_model(call_a)}, tasks=tasks, n=6, prompt_prefix=&quot;&quot;),
+}
+for axis, run in runs.items():
+    print(axis, pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;], lang=&quot;en&quot;)[&quot;text&quot;], sep=&quot;\n&quot;)</code></pre>
+<p class="read"><span class="zh">agent 维度同理：同一模型同一脚手架，比“单遍”与“出草稿后自检修正”。还能做：事前样本量规划（required_tasks / required_pairs）、筛出有区分力的题（screen_tasks / screen_graded）。完整示例见 README。</span><span class="en">The agent axis works the same way: same model, same scaffold, one pass vs draft-then-self-correct. Also: sample-size planning (required_tasks / required_pairs) and screening for tasks that discriminate (screen_tasks / screen_graded). Full example in the README.</span></p>
 </section>
 
 <section id="related">
@@ -152,7 +201,7 @@ print(pe.report(run[&quot;reports&quot;], refusals=run[&quot;refusals&quot;])[&q
 
 <footer class="wrap">
 <span class="bar" style="background:var(--accent)"></span><span class="bar" style="background:var(--accent2)"></span>
-paired-eval v0.2.0 · MIT · <a href="https://github.com/alloevil/paired-eval">github.com/alloevil/paired-eval</a> · <span class="zh">本页无外部脚本、样式或字体。</span><span class="en">This page loads no external scripts, styles or fonts.</span>
+paired-eval v0.3.0 · MIT · <a href="https://github.com/alloevil/paired-eval">github.com/alloevil/paired-eval</a> · <span class="zh">本页无外部脚本、样式或字体。</span><span class="en">This page loads no external scripts, styles or fonts.</span>
 </footer>
 <script>
 (function(){var k='paired-eval-lang',b=document.body,btn=document.getElementById('lang');

@@ -97,6 +97,24 @@ def test_readme_headers_reference_existing_logo_and_site():
         assert '<h1 align="center">paired-eval</h1>' in t
 
 
+def test_site_code_samples_are_valid_python_and_match_api():
+    """主页上的代码块只展示不执行, 至少要语法合法、只调用 paired_eval 真实导出的名字。
+    这条守卫加上的当天就抓到一处: 英文样例的字符串替换把最后一行的括号弄坏了。"""
+    import ast
+    for name in ("TASKS_CODE_ZH", "TASKS_CODE_EN", "GATED_CODE_ZH", "GATED_CODE_EN"):
+        tree = ast.parse(getattr(build_site, name))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "pe":
+                assert hasattr(pe, node.attr), f"{name}: pe.{node.attr} 不存在"
+    # 中英两版是同一段代码的翻译: 行数一致
+    assert len(build_site.TASKS_CODE_ZH.splitlines()) == len(build_site.TASKS_CODE_EN.splitlines())
+    assert len(build_site.GATED_CODE_ZH.splitlines()) == len(build_site.GATED_CODE_EN.splitlines())
+    src = INDEX.read_text(encoding="utf-8")
+    for w in ("model", "harness", "agent", "gated", "canary"):
+        assert w in src, f"主页缺 {w}"
+    assert "桩函数" in src and "stub functions" in src, "demo 必须标明是桩, 不是模型"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

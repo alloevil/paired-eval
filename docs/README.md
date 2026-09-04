@@ -13,7 +13,7 @@
 - 第一次接触：先读根目录 [README](../README.md)（[English](../README.en.md)），再读 [lessons.md](lessons.md) 的第一节"检验能不能说话"。
 - 要评自己的系统：README 的"快速开始"两段代码 + [`examples/adapter_openai_compat.py`](../examples/adapter_openai_compat.py)。
 - 要贡献代码：[CONTRIBUTING.md](../CONTRIBUTING.md)。
-- 要复现记录的结论：[`reproduce_findings.py`](../reproduce_findings.py) 头部注释；三项检查的成本见 [`checkall.sh`](../checkall.sh) 头部。
+- 要复现记录的结论：[`reproduce_findings.py`](../paired_eval/reproduce_findings.py) 头部注释；三项检查的成本见 [`checkall.sh`](../checkall.sh) 头部。
 
 ## 锚点约定
 

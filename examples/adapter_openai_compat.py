@@ -12,7 +12,7 @@
     from examples.adapter_openai_compat import make_call, make_llm
     call = make_call(model="gpt-4o-mini")
     llm = make_llm(model="gpt-4o-mini")
-    import reproduce_findings as rf; rf.main(call, judge=llm)
+    from paired_eval import reproduce_findings as rf; rf.main(call, judge=llm)
 """
 import json
 import os

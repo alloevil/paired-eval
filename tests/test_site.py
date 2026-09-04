@@ -37,7 +37,7 @@ def test_index_html_states_true_facts():
     assert f"v{pe.__version__}" in src, "主页版本号过期"
     assert html.escape(build_site.INSTALL) in src
     # 主页的安装命令与 README 的一致
-    for name in ("README.md", "README.en.md"):
+    for name in ("README.md", "README.zh-CN.md"):
         assert build_site.INSTALL in (ROOT / name).read_text(encoding="utf-8"), name
     # 文档卡片链到的文件都存在
     for rel in re.findall(r'href="https://github\.com/alloevil/paired-eval/blob/main/([^"]+)"', src):
@@ -89,7 +89,7 @@ def test_index_html_is_self_contained_and_well_formed():
 
 
 def test_readme_headers_reference_existing_logo_and_site():
-    for name in ("README.md", "README.en.md"):
+    for name in ("README.md", "README.zh-CN.md"):
         t = (ROOT / name).read_text(encoding="utf-8")
         assert 'src="docs/assets/logo.svg"' in t, f"{name}: 头部应用仓库内的 logo"
         assert (ROOT / "docs/assets/logo.svg").exists()
@@ -125,8 +125,8 @@ def test_descriptions_say_the_same_thing():
     for w in ("models", "agents", "harnesses", "program", "rubric", "paired"):
         assert w in build_site.ABOUT, f"About 缺关键词 {w}"
     py_desc = re.search(r'^description = "([^"]*)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M).group(1)
-    zh_tagline = re.search(r'<p align="center"><em>([^<]*)</em></p>', (ROOT / "README.md").read_text(encoding="utf-8")).group(1)
-    assert py_desc == zh_tagline, f"pyproject 描述与 README 标语不一致:\n  {py_desc}\n  {zh_tagline}"
+    en_tagline = re.search(r'<p align="center"><em>([^<]*)</em></p>', (ROOT / "README.md").read_text(encoding="utf-8")).group(1)
+    assert py_desc == en_tagline == build_site.ABOUT, f"pyproject 描述 / README 标语 / ABOUT 不一致:\n  {py_desc}\n  {en_tagline}\n  {build_site.ABOUT}"
     cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
     for w in ("models, agents and harnesses", "rubric", "paired"):
         assert w in cff, f"CITATION abstract 缺 {w}"

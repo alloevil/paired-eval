@@ -3,7 +3,7 @@
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
-import paired_bench as pb
+from paired_eval import paired_bench as pb
 
 
 def _canon(prompt):
@@ -1072,7 +1072,7 @@ def test_screen_graded_confirm_n_and_mean_boundaries():
 def test_report_english_has_no_cjk_and_follows_default_language():
     """report(lang="en") 的每一行都不得含中文; 不传 lang 时跟随 claim_eval.DEFAULT_LANG。"""
     import re
-    import claim_eval as ce
+    from paired_eval import claim_eval as ce
     cjk = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
     reports = {"a": _cell(1.0), "b": _cell(1 / 3), "c": _cell(0.0)}
     rp = pb.report(reports, refusals={"a": 0, "b": 1, "c": 0}, require_interleaved=False, lang="en")
@@ -1099,8 +1099,8 @@ def test_report_english_has_no_cjk_and_follows_default_language():
 
 def test_judge_check_binarizes_evaluate_with_explicit_threshold():
     """judge 评分任务进配对流水线: judge_check 把 evaluate 的分数按显式阈值二值化。"""
-    import eval_task as et
-    import rubric_eval as re_
+    from paired_eval import eval_task as et
+    from paired_eval import rubric_eval as re_
     task = {"id": "r1", "instruction": "写一句话",
             "verification": {"class": "rubric", "criteria": [{"text": "有主语", "weight": 1},
                                                              {"text": "有标点", "weight": 1}]}}
@@ -1130,7 +1130,7 @@ def test_judge_check_binarizes_evaluate_with_explicit_threshold():
     seen = {}
 
     def traj_judge(prompt, system, schema):
-        import claim_eval as ce
+        from paired_eval import claim_eval as ce
         if system is ce.EXTRACT_SYSTEM:
             return {"claims": [{"text": "X", "verifiable": True, "importance": "core", "search_query": "q"}]}
         seen["prompt"] = prompt
@@ -1144,7 +1144,7 @@ def test_judge_check_binarizes_evaluate_with_explicit_threshold():
 def test_gated_tasks_flow_through_interleaved_report():
     """端到端: 混合验证类(exact / gated)的任务经 bench_tasks 进 run_interleaved -> report。
     这就是"能验的先验、验不过 0 分、验过再判"在配对比较里的样子。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     tasks = [
         {"id": "num", "instruction": "12*12 等于多少", "canonical": "答案: 144",
          "verification": {"class": "exact", "gold": "144", "kind": "numeric"}},

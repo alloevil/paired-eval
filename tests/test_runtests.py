@@ -155,7 +155,7 @@ def test_docs_anchors_resolve():
         defined[md.name] = set(re.findall(r'<a name="([^"]+)"></a>', md.read_text(encoding="utf-8")))
     assert defined, "docs/ 下应有带锚点的 markdown"
     refs, missing = 0, []
-    scan = list(ROOT.glob("*.py")) + list(ROOT.glob("*.sh")) + list((ROOT / "tests").glob("*.py")) \
+    scan = list(ROOT.glob("*.py")) + list((ROOT / "paired_eval").glob("*.py")) + list(ROOT.glob("*.sh")) + list((ROOT / "tests").glob("*.py")) \
         + list((ROOT / "docs").glob("*.md")) + list(ROOT.glob("*.md"))
     for f in scan:
         for doc, anchor in re.findall(r'(findings|lessons|corrections)\.md#([a-z0-9-]+)',

@@ -12,8 +12,8 @@ report 报的单元数是否等于 run_interleaved 实际跑的轮次? saturatio
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
-import claim_eval as ce
-import paired_bench as pb
+from paired_eval import claim_eval as ce
+from paired_eval import paired_bench as pb
 
 
 # 三类候选: 中段(有余量)、恒过、恒败 —— 覆盖筛选的三条出口

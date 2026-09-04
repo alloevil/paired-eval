@@ -8,7 +8,7 @@
 必做对照: 先验证 ast.unparse 空变异后套件仍全绿 —— 否则 unparse 自身的改写
 (丢注释、改引号、规范化)会让所有变异都"被杀死", 得出虚假的满分。
 
-用法: python3 mutate_auto.py [模块...] [--limit N] [--seed S]
+用法: python3 mutate_auto.py [paired_eval/模块.py ...] [--limit N] [--seed S]
      python3 mutate_auto.py --baseline   # 全量跑并把已确认的等价变异写入基线
      python3 mutate_auto.py --check      # 全量跑并与基线比对, 新增存活即失败(棘轮)
      python3 mutate_auto.py --changed    # 只变异未提交改动涉及的行(开发中用, 约20秒)
@@ -211,7 +211,7 @@ def restore_stale_backups():
     必须在读取 original 之前调用: 否则会把变异后的文件当成原件备份, 错误就此固化。
     返回已还原的模块名列表。"""
     restored = []
-    for bk in sorted(ROOT.glob(f"*.py{BACKUP_SUFFIX}")):
+    for bk in sorted(ROOT.glob(f"**/*.py{BACKUP_SUFFIX}")):
         src = bk.with_name(bk.name[: -len(BACKUP_SUFFIX)])
         src.write_text(bk.read_text(encoding="utf-8"), encoding="utf-8")
         bk.unlink()
@@ -352,8 +352,8 @@ if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     opts = {a.split("=")[0]: a.split("=")[1] for a in sys.argv[1:] if "=" in a}
     flags = {a for a in sys.argv[1:] if a.startswith("--") and "=" not in a}
-    mods = args or ["claim_eval.py", "answer_match.py", "rubric_eval.py",
-                    "eval_task.py", "paired_bench.py"]
+    mods = args or ["paired_eval/claim_eval.py", "paired_eval/answer_match.py", "paired_eval/rubric_eval.py",
+                    "paired_eval/eval_task.py", "paired_eval/paired_bench.py"]
     since = opts.get("--since") or ("HEAD" if "--changed" in flags else None)
     res = run(mods, limit=int(opts.get("--limit", 0)) or None,
               seed=int(opts.get("--seed", 0)), since=since)

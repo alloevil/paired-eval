@@ -3,9 +3,9 @@
 import pathlib as _pathlib
 import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
-import claim_eval as ce
-import eval_task as et
-import rubric_eval as re_
+from paired_eval import claim_eval as ce
+from paired_eval import eval_task as et
+from paired_eval import rubric_eval as re_
 
 
 def mock_search(query):
@@ -89,7 +89,7 @@ def test_batch_feeds_paired_compare():
 
 
 def test_rubric_route():
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
 
     def rubric_llm(prompt, system, schema):
         assert system is re_.JUDGE_RUBRIC_SYSTEM
@@ -163,7 +163,7 @@ def test_summarize():
 
 
 def test_repeat_evaluate():
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     calls = []
 
     def flaky_llm(prompt, system, schema):   # 前4次met,后4次not_met
@@ -214,7 +214,7 @@ def test_summarize_window_guard():
 def test_evaluate_pair_cancels_judge_order_bias():
     """交错判定: judge 的"先看到谁就给谁高分"这类顺序偏置必须两侧对消;
     真实质量差仍照常检出。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     seen = {"i": 0}
 
     def order_biased_judge(prompt, system, schema):
@@ -306,7 +306,7 @@ def test_reason_propagates_to_summary():
 def test_repeat_reports_dispersion():
     """重复的目的就是量方差, 只报均值等于白重复:
     [1,0,1,0] 与恒定0.5 均值相同, 前者是判定不稳定, 后者是稳定中等分。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     flip = {"i": 0}
 
     def alternating(prompt, system, schema):
@@ -338,7 +338,7 @@ def test_repeat_reports_dispersion():
 def test_pair_dropped_reps_counted():
     """evaluate_pair 剔出无效轮次时必须计数并归因:
     静默丢弃会让 a_mean/b_mean 的分母悄悄变小, 报表看不出任何异常。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     state = {"i": 0}
 
     def sometimes_all_abstain(prompt, system, schema):
@@ -366,7 +366,7 @@ def test_fingerprint_covers_every_prompt():
     """七个判定 prompt 每一个都必须影响指纹: 少算任何一个, 改动它就不会换尺子,
     而分数会被当成同尺可比。此前只测过改 JUDGE_WORLD_SYSTEM, 漏掉其余六个 ——
     从元组里删掉 rubric prompt 在变异测试中存活。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     base = et.verifier_fingerprint()
     targets = [(ce, "EXTRACT_SYSTEM"), (ce, "JUDGE_WORLD_SYSTEM"), (ce, "JUDGE_TRAJ_SYSTEM"),
                (ce, "DERIVED_SYSTEM"), (ce, "REFORMULATE_SYSTEM"), (ce, "CORROBORATE_SYSTEM"),
@@ -417,7 +417,7 @@ def test_validate_task_rejects_malformed_task():
 def test_pair_one_sided_none():
     """只有一侧无分数的轮次也必须被剔除并归因: 此前用例都是"两侧同时 None",
     于是把 and 改成 or 后仍然存活 —— 而 or 会让 None 混进均值计算直接崩。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     calls = {"i": 0}
 
     def b_abstains_first_rep(prompt, system, schema):
@@ -465,7 +465,7 @@ def test_all_routes_reject_missing_deps():
 def test_repeat_edge_cases():
     """两个边界: n=2 必须有标准差(> 1 改成 > 2 后存活);
     全部分数为 None 时不得凭空报出 successes(and 改成 or 后存活)。"""
-    import rubric_eval as re_
+    from paired_eval import rubric_eval as re_
     flip = {"i": 0}
 
     def alternating(prompt, system, schema):

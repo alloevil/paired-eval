@@ -47,13 +47,13 @@ code.inl{background:var(--card);border:1px solid var(--line);border-radius:5px;p
 <p class="zh tagline">给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。</p><p class="en tagline">Evaluate models, agents and harnesses: verify programmatically whatever can be verified, hand the rest to a rubric — and make every comparison a statistically honest paired one.</p>
 <div class="actions">
 <a class="btn primary" href="https://github.com/alloevil/paired-eval">GitHub</a>
-<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.md"><span class="zh">README</span><span class="en">README（中文）</span></a>
-<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.en.md"><span class="zh">English README</span><span class="en">README</span></a>
+<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.zh-CN.md"><span class="zh">README（中文）</span><span class="en">中文 README</span></a>
+<a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/README.md"><span class="zh">English README</span><span class="en">README</span></a>
 <a class="btn" href="https://github.com/alloevil/paired-eval/blob/main/docs/README.md"><span class="zh">文档</span><span class="en">Docs</span></a>
 <button class="btn lang" id="lang" type="button">English</button>
 </div>
-<pre class="install"><code>pip install git+https://github.com/alloevil/paired-eval.git</code></pre>
-<p class="meta">v0.3.0 · MIT · Python ≥ 3.9 · <span class="zh">零第三方依赖 · 模型调用由你注入</span><span class="en">no third-party dependencies · you inject the model call</span></p>
+<pre class="install"><code>pip install paired-eval</code></pre>
+<p class="meta">v0.4.0 · MIT · Python ≥ 3.9 · <span class="zh">零第三方依赖 · 模型调用由你注入</span><span class="en">no third-party dependencies · you inject the model call</span></p>
 </div></header>
 
 <main class="wrap">
@@ -89,12 +89,12 @@ print(r[&quot;score&quot;], r[&quot;verdict&quot;])        # wrong -&gt; 0.0 &#x
 <section id="demo">
 <h2><span class="zh">十秒钟看效果（统计层的离线演示）</span><span class="en">Ten seconds (an offline demo of the statistics layer)</span></h2>
 <p class="lead"><span class="zh"><strong>这里的 strict / bare 是两个桩函数，不是模型</strong>——它们复刻一种真实观察到的失败机理（裸指令下正确答案被包进 markdown 围栏），只为在没有 API 时展示报告的形状。输出是真的（由测试与当前代码逐行比对）。</span><span class="en"><strong>strict / bare here are two stub functions, not models</strong> — they replay one real failure mechanism (a bare prompt wraps the correct JSON in markdown fences), only to show the shape of a report without any API. The output is real (a test keeps it identical to the current code).</span></p>
-<pre class="zh"><code>$ python3 paired_eval.py
+<pre class="zh"><code>$ python3 -m paired_eval
 有效样本: 2/4 题有信息(恒过 2, 恒败 0)
 拒答: {&#x27;strict&#x27;: 0, &#x27;bare&#x27;: 0}
 触顶(1.000): strict —— 该系统无余量, 它作为参照时效应会被压缩
 bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | 逐题p=0.506 逐轮McNemar=0.00781 Holm=0.00781 | 不一致对 0:8 集中度=0.50 | 显著: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)</code></pre>
-<pre class="en"><code>$ python3 paired_eval.py --lang en
+<pre class="en"><code>$ python3 -m paired_eval --lang en
 informative sample: 2/4 tasks informative (always-pass 2, always-fail 0)
 refusals: {&#x27;strict&#x27;: 0, &#x27;bare&#x27;: 0}
 at ceiling (1.000): strict — no headroom; effects measured against it as the reference are compressed
@@ -201,7 +201,7 @@ for axis, run in runs.items():
 
 <footer class="wrap">
 <span class="bar" style="background:var(--accent)"></span><span class="bar" style="background:var(--accent2)"></span>
-paired-eval v0.3.0 · MIT · <a href="https://github.com/alloevil/paired-eval">github.com/alloevil/paired-eval</a> · <span class="zh">本页无外部脚本、样式或字体。</span><span class="en">This page loads no external scripts, styles or fonts.</span>
+paired-eval v0.4.0 · MIT · <a href="https://github.com/alloevil/paired-eval">github.com/alloevil/paired-eval</a> · <span class="zh">本页无外部脚本、样式或字体。</span><span class="en">This page loads no external scripts, styles or fonts.</span>
 </footer>
 <script>
 (function(){var k='paired-eval-lang',b=document.body,btn=document.getElementById('lang');

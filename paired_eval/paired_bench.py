@@ -40,9 +40,9 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
 
 import time
 
-import answer_match as am
-import claim_eval as ce
-import eval_task as et
+from . import answer_match as am
+from . import claim_eval as ce
+from . import eval_task as et
 
 
 def make_model(call, tries=2, sleep=time.sleep):

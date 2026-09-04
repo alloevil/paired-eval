@@ -77,7 +77,7 @@ def case_prepush_accepts_clean(work):
 
 
 def case_prepush_rejects_untested_code(work):
-    p = work / "rubric_eval.py"
+    p = work / "paired_eval" / "rubric_eval.py"
     src = p.read_text(encoding="utf-8")
     p.write_text(src.replace("def aggregate_rubric(results):",
                              UNTESTED + "def aggregate_rubric(results):", 1), encoding="utf-8")

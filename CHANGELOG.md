@@ -5,7 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-04
+
 ### Changed
+- **Packaging (breaking for the internal module names)**: the implementation modules now live inside the
+  `paired_eval` package — `from paired_eval import claim_eval` instead of `import claim_eval`. The public
+  surface `import paired_eval as pe` is unchanged. This stops seven generic top-level names (`answer_match`,
+  `eval_task`, …) from landing in `site-packages`.
+- Published on PyPI: `pip install paired-eval`. The offline demo is `python3 -m paired_eval`.
+- English README is now `README.md` (the default GitHub view); the Chinese one is `README.zh-CN.md`. The first
+  screen leads with the question the tool answers and a three-line `paired_compare` / `interpret` example.
+- `pyproject` description is the English one-liner shared with GitHub About / website meta / CITATION.
 - One-line description aligned everywhere (GitHub About, website meta, `pyproject`, README tagline, CITATION)
   to the model / agent / harness framing; a test now keeps them in step.
 

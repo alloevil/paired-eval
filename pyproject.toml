@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paired-eval"
-version = "0.3.0"
-description = "给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。"
+version = "0.4.0"
+description = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"          # ast.unparse / math.nextafter 均为 3.9+
@@ -17,6 +17,11 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
-# 平铺布局: 可安装的是这几个库模块。mutate_auto / check_hooks 是仓库内的开发工具, 不随包分发。
-[tool.setuptools]
-py-modules = ["paired_eval", "answer_match", "claim_eval", "rubric_eval", "eval_task", "paired_bench", "reproduce_findings"]
+[project.urls]
+Homepage = "https://alloevil.github.io/paired-eval/"
+Repository = "https://github.com/alloevil/paired-eval"
+Changelog = "https://github.com/alloevil/paired-eval/blob/main/CHANGELOG.md"
+
+# 只分发 paired_eval 包。mutate_auto / check_hooks / build_site 是仓库内的开发工具, 不随包分发。
+[tool.setuptools.packages.find]
+include = ["paired_eval"]

@@ -2,109 +2,129 @@
   <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
 </p>
 <h1 align="center">paired-eval</h1>
-<p align="center"><em>给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。</em></p>
+<p align="center"><em>Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics.</em></p>
 <p align="center">
+  <a href="https://pypi.org/project/paired-eval/"><img src="https://img.shields.io/pypi/v/paired-eval.svg" alt="PyPI"></a>
   <a href="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml"><img src="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="Dependencies: none"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
-<p align="center"><a href="https://alloevil.github.io/paired-eval/">主页</a> · <a href="README.en.md">English</a> · <a href="docs/README.md">文档</a> · <a href="CHANGELOG.md">更新日志</a></p>
+<p align="center"><a href="https://alloevil.github.io/paired-eval/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/README.md">Docs</a> · <a href="CHANGELOG.md">Changelog</a></p>
 
-纯标准库 Python ≥ 3.9，零依赖。模型与评委都由你注入（`call(prompt) -> str`、`judge(prompt, system, schema) -> dict`），不绑定供应商。
+**You ran model A and model B on the same 40 tasks. A scored 0.72, B scored 0.65. Is A better?**
+Usually you cannot tell from those two numbers — and an LLM judge's "A is better" is not evidence either.
+paired-eval answers with a paired test on the per-task results, a confidence interval, and a verdict that
+says *significant* / *bounded null* (with the effect it rules out) / *uninformative* / *powerless* — never a bare "p > 0.05".
 
-## 它评什么
-
-三个对象问的是三个不同的问题，各自固定不同的变量；混着评什么都得不到。
-
-| 评什么 | 固定什么 | 换什么 | 一次 A/B 长什么样 |
-|---|---|---|---|
-**model** | 同一批题、同一脚手架 | 模型 | `{"A": call_a, "B": call_b}` |
-**harness** | 同一模型 | 提示 / 脚手架 / 工具接线 | `{"strict": 加严格前缀, "bare": 裸指令}` |
-**agent** | 同一模型、同一脚手架 | 策略 | `{"single": 单遍, "self-check": 出草稿后自检修正}` |
-**三者的交互** | 2×2 因子设计 | 两个因子同时换 | 同一把尺子上比主效应，并自动报出天花板 |
-
-## 怎么验：能用程序验的先验，验不过的再判
-
+```sh
+pip install paired-eval
 ```
-有唯一真值 ──→ exact(数值 / 选项 / 集合 / \boxed{}) 或程序判定 check(response) -> bool
-只有事实来源 ──→ retrieval(检索核实) / trajectory(逐条 claim 对 agent 看到的观察做 grounding)
-只有质量标准 ──→ rubric(逐条二值判定 + 加权; rubric 自身要过 canary: 糊弄回答不得高分)
-```
-
-层可以叠加——**程序做 gate，rubric 做 score**。验不过直接 0 分且不调用评委：不为一个已经错了的回答付 judge 的钱，也不让 judge 在"能不能跑"上被表面功夫骗过，它只在确实过关的候选里分高下。
 
 ```python
 import paired_eval as pe
 
-task = {"id": "sum-explained", "instruction": "12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果",
+a = [1, 0, 1, 1, 0, 1, 1, 0]          # per-task pass/fail (or scores) for system A
+b = [1, 0, 0, 1, 0, 0, 1, 0]          # same tasks, same order, for system B
+print(pe.interpret(pe.paired_compare(a, b))["text"])
+```
+
+Pure standard-library Python ≥ 3.9, no dependencies. You inject both the model (`call(prompt) -> str`) and the judge (`judge(prompt, system, schema) -> dict`); no vendor binding.
+
+Three things it does, and why each exists:
+
+| | Because |
+|---|---|
+| **Paired statistics** — per-round McNemar + per-task permutation, Holm correction, bootstrap CI, sample-size planning | Unpaired means on 40 tasks hide a 0.3 effect behind noise; paired tests on the same tasks do not |
+| **Program gate, then rubric** — an answer that fails a programmatic check scores 0 and the judge is never called | Judges get fooled on "does it work"; programs do not. Spend judge calls only on ranking answers that already work |
+| **Saturation & ceiling diagnostics** — tasks both systems always pass carry no information; a system at 1.0 has no headroom | Most "no difference" results are really "no informative tasks", and the remedy is different |
+
+## What it evaluates
+
+The three objects ask three different questions and hold different things constant; mixing them up yields nothing.
+
+| Evaluate | Hold constant | Vary | What one A/B looks like |
+|---|---|---|---|
+**model** | same tasks, same scaffold | the model | `{"A": call_a, "B": call_b}` |
+**harness** | same model | prompt / scaffold / tool wiring | `{"strict": strict prefix, "bare": bare prompt}` |
+**agent** | same model, same scaffold | the strategy | `{"single": one pass, "self-check": draft then self-correct}` |
+**their interaction** | 2×2 factorial | both factors | main effects on one scale, ceilings flagged automatically |
+
+## How it verifies: programmatic checks first, judges only for what they cannot cover
+
+```
+a unique ground truth ──→ exact (numeric / choice / set / \boxed{}) or a programmatic check(response) -> bool
+only sources of fact  ──→ retrieval (verify against search) / trajectory (ground each claim in what the agent saw)
+only a quality bar    ──→ rubric (per-criterion binary judging, weighted; the rubric must pass a canary: a bluffing answer must not score high)
+```
+
+Layers stack — **the program gates, the rubric scores**. Failing the gate scores 0 and never calls the judge: you do not pay a judge for an answer that is already wrong, and the judge cannot be fooled on "does it work" — it only ranks quality among candidates that do.
+
+```python
+import paired_eval as pe
+
+task = {"id": "sum-explained", "instruction": "What is 12×12? Explain, and give the result starting with 'Answer: '",
         "verification": {"class": "gated",
-                         "gate":  {"class": "exact", "gold": "144", "kind": "numeric"},
-                         "score": {"class": "rubric", "criteria": [{"text": "说明了计算过程", "weight": 1}]}}}
+                         "gate":  {"class": "exact", "gold": "144", "kind": "numeric", "marker": "Answer"},
+                         "score": {"class": "rubric", "criteria": [{"text": "explains the calculation", "weight": 1}]}}}
 r = pe.evaluate(task, response=answer, llm=judge)
-print(r["score"], r["verdict"])        # 答错 -> 0.0 'gated_out'(judge 一次都没调用); 答对 -> rubric 分
+print(r["score"], r["verdict"])        # wrong -> 0.0 'gated_out' (judge never called); right -> the rubric score
 ```
 
-`evaluate` 的其他路由：`exact`（纯程序，无 LLM）、`retrieval`、`trajectory`、`rubric`；`rubric_canary` 检验一份 rubric 会不会被糊弄回答骗过。
+Other `evaluate` routes: `exact` (programmatic, no LLM), `retrieval`, `trajectory`, `rubric`; `rubric_canary` checks whether a rubric can be gamed by a bluffing answer.
 
-## 安装
+## Ten seconds (an offline demo of the statistics layer)
 
 ```sh
-pip install git+https://github.com/alloevil/paired-eval.git
+python3 -m paired_eval --lang en        # or pe.set_language("en") once in code
 ```
 
-## 十秒钟看效果（统计层的离线演示）
-
-```sh
-python3 paired_eval.py            # --lang en 输出英文报告
-```
-
-**这里的 `strict` / `bare` 是两个桩函数，不是模型**——它们复刻一种真实观察到的失败机理（裸指令下正确答案被包进 markdown 围栏，JSON 解析失败），只为在没有 API 的情况下展示报告的形状。输出是真的（由测试与当前代码逐行比对）：
+**`strict` / `bare` here are two stub functions, not models** — they replay one real failure mechanism (under a bare prompt the correct JSON gets wrapped in markdown fences and fails to parse), only to show the shape of a report without any API. The output is real (a test keeps it identical to the current code):
 
 ```
-有效样本: 2/4 题有信息(恒过 2, 恒败 0)
-拒答: {'strict': 0, 'bare': 0}
-触顶(1.000): strict —— 该系统无余量, 它作为参照时效应会被压缩
-bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | 逐题p=0.506 逐轮McNemar=0.00781 Holm=0.00781 | 不一致对 0:8 集中度=0.50 | 显著: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)
+informative sample: 2/4 tasks informative (always-pass 2, always-fail 0)
+refusals: {'strict': 0, 'bare': 0}
+at ceiling (1.000): strict — no headroom; effects measured against it as the reference are compressed
+bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNemar=0.00781 Holm=0.00781 | discordant 0:8 concentration=0.50 | significant: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)
 ```
 
-两题两系统全对、不携带信息（有效样本 2/4）；8 个不一致对全部偏向 `strict`，分布在 2 题上（集中度 0.50）；逐题置换 p=0.506 是因为只有 2 道有信息题，**它的最小可能 p 就是 0.5**，而逐轮 McNemar 用上全部 16 个配对单元。末段是可直接写进报告的结论。
+Two tasks were solved by both systems every time and carry no information (informative sample 2/4); all 8 discordant pairs favour `strict`, spread over 2 tasks (concentration 0.50); the per-task permutation p is 0.506 because with 2 informative tasks **its minimum attainable p is 0.5**, while per-round McNemar uses all 16 paired units. The last clause is a verdict you can paste into a report.
 
-## 用真实模型：三个对象各做一次 A/B
+## With real models: one A/B per object
 
-**1. 任务集按"有什么可验"混搭验证类。** 有真值的用程序，有真值又要看质量的用 `gated`，只有资料来源的用 `trajectory`：
+**1. Mix verification classes by what can be verified.** Ground truth → programmatic; ground truth plus a quality bar → `gated`; only sources → `trajectory`:
 
 ```python
 my_tasks = [
-    {"id": "date", "instruction": "把 2024年3月5日 写成 ISO 8601 日期; 以「答案: 」开头给出",
-     "verification": {"class": "exact", "gold": "2024-03-05"}},
-    {"id": "sum-explained", "instruction": "12×12 等于多少, 并说明过程; 以「答案: 」开头给出结果",
+    {"id": "date", "instruction": "Write 5 March 2024 as an ISO 8601 date, starting with 'Answer: '",
+     "verification": {"class": "exact", "gold": "2024-03-05", "marker": "Answer"}},
+    {"id": "sum-explained", "instruction": "What is 12×12? Explain, and give the result starting with 'Answer: '",
      "verification": {"class": "gated",
-                      "gate":  {"class": "exact", "gold": "144", "kind": "numeric"},
-                      "score": {"class": "rubric", "criteria": [{"text": "说明了计算过程", "weight": 1}]}}},
-    {"id": "summary", "instruction": "只依据下面的资料写一句总结。资料: X 公司 2023 年营收 412 亿元。",
-     "observations": [{"tool_call_id": "t1", "tool": "doc", "observation": "X 公司 2023 年营收 412 亿元。"}],
+                      "gate":  {"class": "exact", "gold": "144", "kind": "numeric", "marker": "Answer"},
+                      "score": {"class": "rubric", "criteria": [{"text": "explains the calculation", "weight": 1}]}}},
+    {"id": "summary", "instruction": "Write a one-sentence summary using only the source. Source: X's 2023 revenue was 41.2bn.",
+     "observations": [{"tool_call_id": "t1", "tool": "doc", "observation": "X's 2023 revenue was 41.2bn."}],
      "verification": {"class": "trajectory", "grounding_policy": "must_ground"}},
 ]
 ```
 
-**2. 接上模型和评委，把任务集变成配对流水线能吃的形态。** 适配器见 [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py)（只用标准库，任何兼容端点）；`bench_tasks` 把每道题的 `evaluate` 结果按显式阈值二值化——"过"是 ≥ 多少要写进报告口径。
+**2. Plug in models and a judge, and turn the task set into what the paired pipeline eats.** The adapter is [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py) (standard library only, any compatible endpoint); `bench_tasks` binarises each task's `evaluate` score at an explicit threshold — "pass" means ≥ this much, and that belongs in the report.
 
 ```python
-from examples.adapter_openai_compat import make_call, make_llm   # 只用标准库的 OpenAI 兼容适配器
+from examples.adapter_openai_compat import make_call, make_llm   # standard-library-only OpenAI-compatible adapter
 
 call_a, call_b = make_call(model="model-a"), make_call(model="model-b")
 judge = make_llm(model="judge-model")
 tasks = pe.bench_tasks(my_tasks, threshold=1.0, llm=judge)
 ```
 
-**3. 三个对象，各固定各的变量。** `n` 是每题每系统的重复次数；交错运行轮转先后顺序。
+**3. Three objects, each holding its own variable constant.** `n` is repeats per task per system; interleaving rotates the order.
 
 ```python
-STRICT = "严格按要求输出, 不要任何多余内容。要求: "
+STRICT = "Follow the format exactly, no extra text. Task: "
 
-def self_check(call):                     # agent 策略: 出草稿, 再按指令自检修正(多一次调用, 不加工具)
-    return lambda p: call(f"指令: {p}\n草稿: {call(p)}\n检查草稿是否严格满足指令, 只输出修正后的答案。")
+def self_check(call):                     # agent strategy: draft, then self-correct against the instruction (one extra call, no tools)
+    return lambda p: call(f"Instruction: {p}\nDraft: {call(p)}\nCheck the draft against the instruction; output only the corrected answer.")
 
 runs = {
     "model":   pe.run_interleaved({"A": pe.make_model(call_a), "B": pe.make_model(call_b)},
@@ -115,64 +135,64 @@ runs = {
                                    "self-check": pe.make_model(self_check(call_a))}, tasks=tasks, n=6, prompt_prefix=""),
 }
 for axis, run in runs.items():
-    print(axis, pe.report(run["reports"], refusals=run["refusals"])["text"], sep="\n")
+    print(axis, pe.report(run["reports"], refusals=run["refusals"], lang="en")["text"], sep="\n")
 ```
 
-跑之前先算样本量，跑之后让 `interpret` 说结论：
+Plan the sample size before running, and let `interpret` state the conclusion afterwards:
 
 ```python
-pe.required_tasks(0.30, 0.10)         # A 胜率 30%、负率 10%: 要多少配对任务才有 80% 功效
-pe.required_pairs(0.15, 0.30)         # 连续分数: 均值差 0.15、sd 0.30 -> 内部真跑置换检验求 n(约 20 秒)
-pe.detectable_effect(31)              # 反过来: 31 道题最小能检出多大的单方面胜率
-pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个结果能说什么
+pe.required_tasks(0.30, 0.10)         # A wins 30% / loses 10% of tasks: paired tasks needed for 80% power
+pe.required_pairs(0.15, 0.30)         # continuous scores, mean diff 0.15, sd 0.30 -> runs the real permutation test (~20 s)
+pe.detectable_effect(31)              # the inverse: the smallest one-sided win rate 31 tasks can detect
+pe.interpret(pe.paired_compare(scores_a, scores_b), lang="en")["text"]   # afterwards: what this result can and cannot say
 ```
 
-`screen_tasks` / `screen_graded` 两阶段筛选帮你找有区分力的题——成功率 > 0.9 的近顶题默认排除，它们在任何可负担轮数下都筛不稳。
+`screen_tasks` / `screen_graded` screen for tasks that discriminate, in two stages; near-ceiling tasks (> 0.9) are excluded by default — they cannot be screened reliably at any affordable number of runs.
 
-## 报告怎么读
+## Reading the report
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-有效样本 | 两系统全轮次同结果的题不贡献信息；MDE 按有信息题数读 |
-拒答 | 各系统被丢弃的调用数——拒答率是结果的一部分 |
-触顶 / 触底 | 满分或零分的系统无余量；与它比较效应被压缩，交互项不可解释 |
-Δ, CI95 | 效应量与 bootstrap 95% 区间 |
-逐题 p / 逐轮 McNemar / Holm | 两种配对检验；多系统时的多重校正 |
-不一致对 a:b, 集中度 | 分歧的方向与分布；1.0 = 全部来自一道题 |
-结论句 | 显著 · 有界 null（附能排除多大效应）· 无信息 · 检验无力（附缺多少什么） |
+informative sample | Tasks both systems always pass or always fail carry no information; read the MDE against the informative count |
+refusals | Dropped calls per system — the refusal rate is part of the result |
+at ceiling / at floor | A system at 1.0 or 0.0 has no headroom; effects against it are compressed, interactions uninterpretable |
+Δ, CI95 | Effect size with a bootstrap 95% interval |
+per-task p / per-round McNemar / Holm | The two paired tests; Holm correction when several systems are compared |
+discordant a:b, concentration | Direction and spread of the disagreements; 1.0 = all from one task |
+verdict | significant · bounded null (with the ruled-out effect) · uninformative · powerless (with what is missing) |
 
-"p > 0.05" 有三种含义，处方各异：样本太小是无信息；不一致对不够是检验无力（加轮次或换能拉开差距的题）；样本够却没测出来才是有界的 null——报能排除多大效应，而不是"无差异"。
+"p > 0.05" means three different things with different remedies: too few units is *uninformative*; too few discordant pairs is *powerless* (add rounds, or tasks that separate the systems); enough units and still nothing is a *bounded null* — report the effect it rules out, never "no difference".
 
-## 与其他工具的关系
+## How it relates to other tools
 
-它们是*运行*评测的框架；本项目接在下游，不重复任务库与模型后端。描述取自各项目自己的 README。
+They are frameworks for *running* evaluations; paired-eval sits downstream and does not duplicate task libraries or model backends. Descriptions are taken from each project's own README.
 
-| 工具 | 它做什么 | 关系 |
+| Tool | What it does | Relation |
 |---|---|---|
-[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ 学术基准、多种模型后端；按指标报标准误 | 它产出逐题分数 → 交给 `paired_compare` / `interpret` |
-[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | 评测框架：提示工程、工具使用、多轮对话、模型评分；200+ 预置评测 | 同上；scorer 输出逐样本，天然可配对 |
-[promptfoo](https://github.com/promptfoo/promptfoo) | 模型/提示 side-by-side 对比与断言；red teaming | 在"比较"上重叠；本项目补验证器叠加与统计结论层 |
-[openai/evals](https://github.com/openai/evals) | 模板 + JSON 数据的评测注册表 | 同样的下游关系 |
+[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ academic benchmarks over many model backends; per-metric standard errors | Produces per-task scores → feed them to `paired_compare` / `interpret` |
+[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | Eval framework: prompt engineering, tool use, multi-turn dialog, model-graded components; 200+ pre-built evals | Same; scorer output is per-sample and pairs naturally |
+[promptfoo](https://github.com/promptfoo/promptfoo) | Side-by-side model/prompt comparison with assertions; red teaming | Overlaps on "compare"; paired-eval adds stacked verifiers and the statistical verdict layer |
+[openai/evals](https://github.com/openai/evals) | Registry of template-based evals fed by JSON data | Same downstream relation |
 
-## API 一览
+## API overview
 
-`import paired_eval as pe`：
+`import paired_eval as pe`:
 
-| 分组 | 入口 |
+| Group | Entry points |
 |---|---|
-验证器 | `evaluate`（`exact` / `retrieval` / `trajectory` / `rubric` / `gated`）`evaluate_pair` `evaluate_batch` `validate_task` `grade_answer` `extract_claims` `verify_trajectory` `run_rubric` `rubric_canary` |
-配对 A/B | `make_model` `bench_tasks` `judge_check` `run_interleaved` `run_paired` `run_repeated` `report` `pairwise_compare` `reliability_matrix` `saturation` |
-统计 | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
-筛题 | `screen_tasks` `screen_graded` · 内置 `ALL_TASKS`（31 道中文冒烟题，示例与自测用） |
-适配 | `make_resilient` `throttled_pmap` `Meter` `set_language` |
+Verifiers | `evaluate` (`exact` / `retrieval` / `trajectory` / `rubric` / `gated`) `evaluate_pair` `evaluate_batch` `validate_task` `grade_answer` `extract_claims` `verify_trajectory` `run_rubric` `rubric_canary` |
+Paired A/B | `make_model` `bench_tasks` `judge_check` `run_interleaved` `run_paired` `run_repeated` `report` `pairwise_compare` `reliability_matrix` `saturation` |
+Statistics | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
+Screening | `screen_tasks` `screen_graded` · built-in `ALL_TASKS` (31 Chinese smoke tasks, for examples and self-tests) |
+Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` |
 
-## 范围与状态
+## Scope and status
 
-- **是**：给模型 / agent / harness 做评测的方法与工具——可叠加的验证器（程序 gate + rubric score）、配对比较的诚实统计、样本量规划、筛题。
-- **不是**：大规模题库（内置 31 题只作示例与自测）、评测平台、模型客户端、rubric **生成**器（autorubric 的那一半不在这里——这里评的是 rubric 会不会被骗）。跑大规模任务集请用上面那些框架，把逐题分数交给这里。
-- **状态**：0.2.0，单作者，接口可能变。报告中英双语（`set_language`）；代码注释与内置题为中文。
-- [docs/findings.md](docs/findings.md) 是用本工具对一对模型、三族任务做的案例研究：harness 与 agent 的效应各约 +0.6~0.75，模型效应 < 10%，两者收益递减但可叠加。数字是实例特定的，展示的是报告该怎么写。
+- **Is**: a method and toolkit for evaluating models / agents / harnesses — stackable verifiers (program gate + rubric score), honest statistics for paired comparison, sample-size planning, task screening.
+- **Is not**: a large task library (the 31 built-in tasks are examples and self-tests), an evaluation platform, a model client, or a rubric **generator** (the autorubric half is not here — this evaluates whether a rubric can be fooled). Run large suites with the frameworks above and hand their per-task scores to this.
+- **Status**: 0.4.0, single author, API may change. Reports in English and Chinese (`set_language`); code comments and built-in tasks are Chinese.
+- [docs/findings.md](docs/findings.md) is a case study done with this toolbox on one model pair and three task families: harness and agent effects of about +0.6–0.75, model effect < 10%, the two with diminishing but stackable returns. The numbers are instance-specific and show how a conclusion should be written.
 
-## 文档 · 贡献 · 许可
+## Docs · Contributing · License
 
-[文档索引](docs/README.md) · [方法学教训](docs/lessons.md)（每个统计原语防的是什么错）· [CONTRIBUTING.md](CONTRIBUTING.md) · MIT
+[Docs index](docs/README.md) · [Methodology lessons](docs/lessons.md) (what each primitive guards against) · [中文 README](README.zh-CN.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · MIT

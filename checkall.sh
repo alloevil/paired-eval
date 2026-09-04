@@ -16,7 +16,7 @@
 # 它检的是"记录的实测结论是否漂移", 依赖外部服务与配额, 不能进无网可跑的清单;
 # 三项的判据逻辑都已被 test_reproduce_findings.py 用假 call/judge 覆盖(在第 1 层里)。
 # 发布前若涉及结论变更, 手动跑:
-#   python3 -c "import reproduce_findings as r; r.main(call, call_b=..., judge=...)"
+#   python3 -c "from paired_eval import reproduce_findings as r; r.main(call, call_b=..., judge=...)"
 #
 # 用法: sh checkall.sh          全部五层
 #       sh checkall.sh --fast   只跑前四层(跳过约 25 分钟的棘轮)

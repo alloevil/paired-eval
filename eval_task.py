@@ -10,6 +10,7 @@ evaluate(task, response=..., observations=..., llm=..., search=...) 按类别路
     retrieval  -> claim_eval.run_world             (需 llm + search)
     trajectory -> claim_eval.extract_claims + verify_trajectory (需 llm + observations)
     rubric     -> rubric_eval.run_rubric           (需 llm; 可选 reference 专家参照)
+    gated      -> gate 先验(任一类), 过了才由 score(任一类)给分; 验不过 0 分且不跑 score
 
 统一返回 {"task_id", "verification_class", "score", "verdict"|None, "metrics"|None,
 "details", "verifier_fp", "cost"?}。score 语义按类别: exact=0/1; retrieval=加权precision;
@@ -33,7 +34,13 @@ import answer_match as am
 import claim_eval as ce
 import rubric_eval as re_
 
-SUPPORTED = ("exact", "retrieval", "trajectory", "rubric")
+SUPPORTED = ("exact", "retrieval", "trajectory", "rubric", "gated")
+
+# gated: "能用程序验证的先验, 验不过直接 0 分; 验过的再用 rubric 分质量" —— 这条原则最直接的形态。
+#   {"class": "gated", "gate": {<任一非 gated 的 verification>}, "score": {<任一非 gated 的 verification>},
+#    "gate_min": 1.0}
+# gate 分数 < gate_min 时 score 侧根本不跑: 既省下 judge 调用, 也让 judge 只在"确实能过"的候选里分高下 ——
+# 这砍掉了 judge 被表面功夫骗过的大部分空间。
 
 
 def verifier_fingerprint():
@@ -60,6 +67,17 @@ def validate_task(task):
         raise ValueError(f"task {task['id']}: exact 类必须提供 gold")
     if v["class"] == "rubric" and not v.get("criteria"):
         raise ValueError(f"task {task['id']}: rubric 类必须提供非空 criteria")
+    if v["class"] == "gated":
+        for part in ("gate", "score"):
+            sub = v.get(part)
+            if not isinstance(sub, dict) or "class" not in sub:
+                raise ValueError(f"task {task['id']}: gated 类必须提供 {part}(含 class 的 verification)")
+            if sub["class"] == "gated":
+                raise ValueError(f"task {task['id']}: {part} 不得再嵌套 gated")
+            validate_task({"id": f"{task['id']}.{part}", "verification": sub})   # 复用各类自身的校验
+        gm = v.get("gate_min", 1.0)
+        if isinstance(gm, bool) or not isinstance(gm, (int, float)) or not 0 < gm <= 1:
+            raise ValueError(f"task {task['id']}: gate_min 必须在 (0, 1], 得到 {gm!r}")
     return v
 
 
@@ -81,6 +99,26 @@ def evaluate(task, response=None, observations=None,
         if meter is not None:
             result["cost"] = ce.Meter.delta(meter.snapshot(), before)
         return result
+
+    if cls == "gated":
+        sub = lambda part: evaluate({"id": f"{task['id']}.{part}", "instruction": task.get("instruction"),
+                                     "verification": v[part]},
+                                    response=response, observations=observations, llm=llm, search=search,
+                                    pmap=pmap, max_retries=max_retries, corroborate=corroborate)
+        gate = sub("gate")                     # llm/search 已被外层 meter 包装, 子调用不再传 meter
+        gate_min = v.get("gate_min", 1.0)
+        passed = gate["score"] is not None and gate["score"] >= gate_min
+        metrics = {"gate_passed": passed, "gate_score": gate["score"], "gate_min": gate_min,
+                   "gate_class": v["gate"]["class"], "score_class": v["score"]["class"]}
+        if not passed:
+            # 验不过 = 0 分, 且 score 侧不评: 不为一个已经错了的回答付 judge 的钱, 也不给它"质量分"
+            return _finish({**base, "score": 0.0, "verdict": "gated_out",
+                            "metrics": {**metrics, "score_evaluated": False},
+                            "details": {"gate": gate, "score": None}})
+        scored = sub("score")
+        return _finish({**base, "score": scored["score"], "verdict": scored["verdict"],
+                        "metrics": {**metrics, "score_evaluated": True, "score_metrics": scored["metrics"]},
+                        "details": {"gate": gate, "score": scored}})
 
     if cls == "exact":
         if response is None:

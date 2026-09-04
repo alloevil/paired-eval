@@ -1097,6 +1097,87 @@ def test_report_english_has_no_cjk_and_follows_default_language():
     assert "有效样本:" in pb.report(reports, require_interleaved=False)["text"]
 
 
+def test_judge_check_binarizes_evaluate_with_explicit_threshold():
+    """judge 评分任务进配对流水线: judge_check 把 evaluate 的分数按显式阈值二值化。"""
+    import eval_task as et
+    import rubric_eval as re_
+    task = {"id": "r1", "instruction": "写一句话",
+            "verification": {"class": "rubric", "criteria": [{"text": "有主语", "weight": 1},
+                                                             {"text": "有标点", "weight": 1}]}}
+
+    def judge(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        met = ("有主语" in prompt and "我" in prompt) or ("有标点" in prompt and "。" in prompt)
+        return {"verdict": "met" if met else "not_met", "reasoning": "r"}
+    strict = pb.judge_check(task, threshold=1.0, llm=judge)
+    lenient = pb.judge_check(task, threshold=0.5, llm=judge)
+    assert strict("我来了。") is True and strict("我来了") is False and lenient("我来了") is True
+    assert strict("来了") is False and lenient("来了") is False
+    # 阈值必须显式且合法
+    for bad in (0, 1.5, True, "1"):
+        try:
+            pb.judge_check(task, threshold=bad, llm=judge)
+            raise AssertionError(f"threshold={bad!r} 应报错")
+        except ValueError as e:
+            assert "threshold" in str(e)
+    # 任务不合法在构造时就报, 不等到跑
+    try:
+        pb.judge_check({"id": "x", "verification": {"class": "rubric"}}, llm=judge)
+        raise AssertionError("非法任务应报错")
+    except ValueError:
+        pass
+    # 任务自带 observations 优先(trajectory 类的资料是题的一部分)
+    seen = {}
+
+    def traj_judge(prompt, system, schema):
+        import claim_eval as ce
+        if system is ce.EXTRACT_SYSTEM:
+            return {"claims": [{"text": "X", "verifiable": True, "importance": "core", "search_query": "q"}]}
+        seen["prompt"] = prompt
+        return {"verdict": "grounded", "source_tool_call": "tc_1", "evidence_quote": "q", "reasoning": "r"}
+    t2 = {"id": "t2", "instruction": "总结", "observations": [{"tool_call_id": "tc_1", "tool": "s", "observation": "资料甲"}],
+          "verification": {"class": "trajectory"}}
+    chk = pb.judge_check(t2, llm=traj_judge, observations=[{"tool_call_id": "tc_9", "tool": "s", "observation": "别的"}])
+    assert chk("X") is True and "资料甲" in seen["prompt"], "应使用任务自带的 observations"
+
+
+def test_gated_tasks_flow_through_interleaved_report():
+    """端到端: 混合验证类(exact / gated)的任务经 bench_tasks 进 run_interleaved -> report。
+    这就是"能验的先验、验不过 0 分、验过再判"在配对比较里的样子。"""
+    import rubric_eval as re_
+    tasks = [
+        {"id": "num", "instruction": "12*12 等于多少", "canonical": "答案: 144",
+         "verification": {"class": "exact", "gold": "144", "kind": "numeric"}},
+        {"id": "num-explained", "instruction": "12*12 等于多少并说明",
+         "verification": {"class": "gated",
+                          "gate": {"class": "exact", "gold": "144", "kind": "numeric"},
+                          "score": {"class": "rubric", "criteria": [{"text": "说明了过程", "weight": 1}]}}},
+    ]
+
+    def judge(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        return {"verdict": "met" if "因为" in prompt else "not_met", "reasoning": "r"}
+    bench = pb.bench_tasks(tasks, threshold=1.0, llm=judge)
+    assert [b["id"] for b in bench] == ["num", "num-explained"] and "canonical" in bench[0] and "canonical" not in bench[1]
+    # A: 答对且解释; B: 答对但不解释 -> exact 题两者同过, gated 题只有 A 过
+    a = lambda p: "答案: 144, 因为 12 个 12 相加"
+    b = lambda p: "答案: 144"
+    out = pb.run_interleaved({"A": a, "B": b}, tasks=bench, n=4, prompt_prefix="")
+    rp = pb.report(out["reports"], refusals=out["refusals"])
+    assert rp["saturation"]["ids"]["saturated_pass"] == ["num"] and rp["saturation"]["ids"]["informative"] == ["num-explained"]
+    pair = rp["pairs"][0]
+    assert {pair["a"], pair["b"]} == {"A", "B"} and pair["a_only"] + pair["b_only"] == 4
+    winner = pair["a"] if pair["a_only"] else pair["b"]
+    assert winner == "A", pair
+    # C: 答错但解释得很好 -> gate 不过 = 0 分, 说明再漂亮也不算。
+    # 注意 exact 数值判定默认 rel_tol=0.01: 143 与 144 差 0.7% 会被判对, 故用 150。
+    c = lambda p: "答案: 150, 因为 12 个 12 相加"
+    out2 = pb.run_interleaved({"A": a, "C": c}, tasks=bench, n=2, prompt_prefix="")
+    rp2 = pb.report(out2["reports"], refusals=out2["refusals"])
+    assert rp2["saturation"]["informative"] == 2, "C 两题都错(exact 不过, gate 不过), 两题都有信息"
+    assert rp2["ceiling"]["at_bottom"] == ["C"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

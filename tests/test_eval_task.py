@@ -5,6 +5,7 @@ import sys as _sys
 _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent))  # 项目根: 让 `python3 tests/x.py` 直接可跑
 import claim_eval as ce
 import eval_task as et
+import rubric_eval as re_
 
 
 def mock_search(query):
@@ -482,6 +483,107 @@ def test_repeat_edge_cases():
     assert r0["scores"] == [] and r0["mean_score"] is None
     assert "successes" not in r0, "没有二值结果时不得报出 successes"
     assert r0["score_stdev"] is None and r0["scored"] == 0
+
+
+def _rubric_llm_counting():
+    """rubric 评委: 记录调用次数, 全部判 met。"""
+    calls = {"n": 0}
+
+    def llm(prompt, system, schema):
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        calls["n"] += 1
+        return {"verdict": "met", "reasoning": "r"}
+    return llm, calls
+
+
+T_GATED = {"id": "t-gated", "instruction": "算 8635 亿并说明",
+           "verification": {"class": "gated",
+                            "gate": {"class": "exact", "gold": "8635亿", "kind": "numeric"},
+                            "score": {"class": "rubric",
+                                      "criteria": [{"text": "给出了计算过程", "weight": 2},
+                                                   {"text": "单位正确", "weight": 1}]}}}
+
+
+def test_gated_fails_gate_scores_zero_and_skips_judge():
+    """"能验的先验, 验不过直接 0 分": gate 不过时 score 侧根本不跑 —— 不为已经错了的回答付 judge 的钱,
+    也不给它一个"质量分"。这是最初那句"有真值用程序验证, 没有用 rubric"最直接的形态。"""
+    llm, calls = _rubric_llm_counting()
+    r = et.evaluate(T_GATED, response="答案: 9000亿, 因为...", llm=llm)
+    assert r["score"] == 0.0 and r["verdict"] == "gated_out"
+    assert r["metrics"]["gate_passed"] is False and r["metrics"]["score_evaluated"] is False
+    assert r["metrics"]["gate_score"] == 0.0 and r["metrics"]["gate_min"] == 1.0
+    assert r["metrics"]["gate_class"] == "exact" and r["metrics"]["score_class"] == "rubric"
+    assert r["details"]["gate"]["verdict"] == "incorrect" and r["details"]["score"] is None
+    assert calls["n"] == 0, "gate 不过, judge 一次都不该被调用"
+    assert r["verification_class"] == "gated" and r["task_id"] == "t-gated"
+
+
+def test_gated_passes_gate_then_rubric_scores():
+    llm, calls = _rubric_llm_counting()
+    r = et.evaluate(T_GATED, response="答案: 8635亿, 由 A+B 得到", llm=llm)
+    assert r["score"] == 1.0 and r["verdict"] is None
+    assert r["metrics"]["gate_passed"] is True and r["metrics"]["score_evaluated"] is True
+    assert r["metrics"]["score_metrics"]["judged_weight_share"] == 1.0
+    assert r["details"]["gate"]["task_id"] == "t-gated.gate" and r["details"]["score"]["task_id"] == "t-gated.score"
+    assert calls["n"] == 2, "两条 criteria -> 两次 judge 调用"
+    # 部分 met: 分数来自 rubric 加权
+    def half(prompt, system, schema):
+        return {"verdict": "met" if "计算过程" in prompt else "not_met", "reasoning": "r"}
+    r2 = et.evaluate(T_GATED, response="答案: 8635亿", llm=half)
+    assert abs(r2["score"] - 2 / 3) < 1e-9, r2["score"]
+
+
+def test_gated_gate_min_with_continuous_gate():
+    """gate 可以是连续分(如 trajectory 的 grounding_rate): gate_min 定"过"的线, 默认 1.0。"""
+    task = {"id": "t-gt", "instruction": "总结",
+            "verification": {"class": "gated", "gate_min": 0.5,
+                             "gate": {"class": "trajectory", "grounding_policy": "must_ground"},
+                             "score": {"class": "rubric", "criteria": [{"text": "简洁", "weight": 1}]}}}
+
+    def llm(prompt, system, schema):
+        if system is ce.EXTRACT_SYSTEM:
+            return mock_llm(prompt, system, schema)           # 两条 claim: 一真一假 -> grounding 0.5
+        if system is ce.JUDGE_TRAJ_SYSTEM:
+            return mock_llm(prompt, system, schema)
+        assert system is re_.JUDGE_RUBRIC_SYSTEM
+        return {"verdict": "met", "reasoning": "r"}
+    r = et.evaluate(task, response="K真事实。W假陈述。", observations=OBS, llm=llm)
+    assert r["metrics"]["gate_score"] == 0.5 and r["metrics"]["gate_passed"] is True and r["score"] == 1.0
+    task["verification"]["gate_min"] = 0.6
+    r2 = et.evaluate(task, response="K真事实。W假陈述。", observations=OBS, llm=llm)
+    assert r2["verdict"] == "gated_out" and r2["score"] == 0.0
+
+
+def test_gated_validation():
+    base = {"class": "exact", "gold": "1", "kind": "numeric"}
+    rub = {"class": "rubric", "criteria": [{"text": "x", "weight": 1}]}
+    bad = [
+        ({"class": "gated", "score": rub}, "必须提供 gate"),
+        ({"class": "gated", "gate": base}, "必须提供 score"),
+        ({"class": "gated", "gate": {"class": "gated", "gate": base, "score": rub}, "score": rub}, "不得再嵌套"),
+        ({"class": "gated", "gate": {"class": "exact"}, "score": rub}, "exact 类必须提供 gold"),
+        ({"class": "gated", "gate": base, "score": {"class": "rubric", "criteria": []}}, "非空 criteria"),
+        ({"class": "gated", "gate": base, "score": rub, "gate_min": 0}, "gate_min"),
+        ({"class": "gated", "gate": base, "score": rub, "gate_min": 1.5}, "gate_min"),
+        ({"class": "gated", "gate": base, "score": rub, "gate_min": True}, "gate_min"),
+    ]
+    for v, msg in bad:
+        try:
+            et.validate_task({"id": "x", "verification": v})
+            raise AssertionError(f"应报错: {v}")
+        except ValueError as e:
+            assert msg in str(e), (msg, str(e))
+    assert et.validate_task({"id": "x", "verification": {"class": "gated", "gate": base, "score": rub}})["class"] == "gated"
+
+
+def test_gated_cost_covers_both_stages():
+    """meter 计的是整个 gated 任务的成本: gate 过时含 judge 调用, 不过时为 0。"""
+    m = ce.Meter()
+    llm, _ = _rubric_llm_counting()
+    r_pass = et.evaluate(T_GATED, response="答案: 8635亿", llm=llm, meter=m)
+    assert r_pass["cost"]["llm_calls"] == 2
+    r_fail = et.evaluate(T_GATED, response="答案: 1", llm=llm, meter=m)
+    assert r_fail["cost"]["llm_calls"] == 0
 
 
 if __name__ == "__main__":

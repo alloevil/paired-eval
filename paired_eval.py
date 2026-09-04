@@ -21,8 +21,8 @@ from claim_eval import (Meter, detectable_effect, extract_claims, holm_adjust, i
 from eval_task import evaluate, evaluate_batch, evaluate_pair, repeat_evaluate, validate_task
 from paired_bench import (ALL_TASKS, DERIVATION_CASES, RUBRIC_GATE, SCAFFOLD_SENSITIVE,
                           TRAJECTORY_GATE, make_model, pairwise_compare, reliability_matrix,
-                          report, run_interleaved, run_paired, run_paired_repeated,
-                          run_repeated, saturation, screen_graded, screen_tasks)
+                          bench_tasks, judge_check, report, run_interleaved, run_paired,
+                          run_paired_repeated, run_repeated, saturation, screen_graded, screen_tasks)
 from rubric_eval import rubric_canary, run_rubric
 
 __version__ = "0.2.0"
@@ -30,6 +30,7 @@ __all__ = [
     # 配对 A/B
     "make_model", "run_paired", "run_repeated", "run_paired_repeated", "run_interleaved",
     "reliability_matrix", "pairwise_compare", "report", "saturation", "screen_tasks", "screen_graded",
+    "judge_check", "bench_tasks",
     # 任务与评分路由
     "evaluate", "evaluate_batch", "evaluate_pair", "repeat_evaluate", "validate_task",
     "ALL_TASKS", "SCAFFOLD_SENSITIVE", "DERIVATION_CASES", "TRAJECTORY_GATE", "RUBRIC_GATE",

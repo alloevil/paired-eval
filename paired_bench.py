@@ -16,6 +16,7 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
     saturation(reports)                       # 有效样本诊断: 饱和题贡献零信息
     screen_tasks(candidates, models)          # 程序判据题的两阶段信息量筛选(筛+复核)
     screen_graded(cases, grade)               # judge 评分题的两阶段筛选(近顶区默认排除)
+    judge_check(task, threshold) / bench_tasks(tasks, threshold)   # judge 评分任务(rubric/gated/...)接入配对流水线
 门禁 fixture(开箱即用, 没有 fixture 的门禁不会被跑):
     TRAJECTORY_GATE -> claim_eval.trajectory_selfcheck(pb.TRAJECTORY_GATE, llm)
     WORLD_GATE      -> claim_eval.selfcheck(pb.WORLD_GATE, llm, search)  # 依赖实时检索,会腐坏
@@ -41,6 +42,7 @@ import time
 
 import answer_match as am
 import claim_eval as ce
+import eval_task as et
 
 
 def make_model(call, tries=2, sleep=time.sleep):
@@ -758,4 +760,37 @@ def screen_graded(cases, grade, n=2, confirm_n=3, band=(0.0, 0.9), **kw):
             out["kept"].append(c)
         else:
             out["dropped_on_confirm"].append(c["id"])
+    return out
+
+
+# ------------------------------------------------------------ judge 评分任务接入配对流水线
+def judge_check(task, threshold=1.0, **deps):
+    """把 eval_task 任务(带 verification)变成 bench 的 check(response) -> bool。
+
+    run_interleaved -> report 这条配对流水线原本只吃程序判定的 check; 有了它, rubric / gated /
+    trajectory / retrieval 这些 judge 评分的任务也走同一套交错重复、McNemar、饱和与触顶诊断。
+    threshold 必须由调用方给: 二值化是有损的, "过"是 >= 多少要写进报告的口径里。
+    deps: evaluate 需要的依赖(llm / search / observations ...); 任务自带 "observations" 时优先用它,
+    因为 trajectory 类任务的资料是题的一部分, 对所有被比系统相同。"""
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not 0 < threshold <= 1:
+        raise ValueError(f"threshold 必须在 (0, 1], 得到 {threshold!r}")
+    et.validate_task(task)
+    kw = dict(deps)
+    if "observations" in task:
+        kw["observations"] = task["observations"]
+
+    def check(response):
+        r = et.evaluate(task, response=response, **kw)
+        return r["score"] is not None and r["score"] >= threshold
+    return check
+
+
+def bench_tasks(tasks, threshold=1.0, **deps):
+    """批量: eval_task 任务列表 -> bench 任务列表({id, instruction, check[, canonical]}), 可直接喂 run_interleaved。"""
+    out = []
+    for t in tasks:
+        b = {"id": t["id"], "instruction": t["instruction"], "check": judge_check(t, threshold, **deps)}
+        if "canonical" in t:
+            b["canonical"] = t["canonical"]
+        out.append(b)
     return out

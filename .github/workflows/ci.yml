@@ -4,9 +4,15 @@ name: ci
 
 on:
   push:
+    branches: [main]        # 分支上的提交由 pull_request 触发即可, 否则每次 push 跑两份(实测: Dependabot 分支各跑了 2 次)
   pull_request:
   schedule:
     - cron: "17 3 * * *"      # 每日 UTC 03:17: 全量, 含机械变异棘轮
+
+# 同一分支/PR 的新提交取消还在跑的旧运行; main 上的运行不取消(它是发布依据)。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   fast-suite:

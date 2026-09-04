@@ -21,6 +21,15 @@
 用 t 检验比两列分数 | 分数不是正态的，样本通常只有几十题 | **McNemar 精确检验**（二值）与**符号翻转置换检验**（连续分），多重比较做 Holm 校正 |
 "p > 0.05，两者没有差别" | "不显著"有三种完全不同的含义 | **`interpret()` 把结果翻译成四种结论之一**：显著 / 有界的 null（能排除多大效应）/ 无信息 / 检验无力（样本再多效应也测不出，并告诉你缺什么） |
 
+
+```mermaid
+flowchart LR
+    T["tasks<br/>指令 + 程序判定器"] --> R["run_interleaved<br/>同题交错重复, 轮转先后"]
+    S["systems<br/>call(prompt) -> str"] --> R
+    R --> P["report<br/>McNemar · 置换 · Holm · CI · 饱和 · 触顶"]
+    P --> I["interpret<br/>显著 · 有界 null · 无信息 · 检验无力"]
+```
+
 ## 安装
 
 ```sh
@@ -32,7 +41,7 @@ pip install git+https://github.com/alloevil/paired-eval.git
 ## 十秒钟看效果（不需要 API）
 
 ```sh
-python3 paired_eval.py
+python3 paired_eval.py            # 加 --lang en 输出英文报告; 代码里用 pe.set_language("en")
 ```
 
 两个桩系统在 4 道内置格式题上做配对 A/B（`bare` 在 JSON 题上把正确答案包进 markdown 围栏），实际输出：
@@ -114,6 +123,17 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个�
 
 **筛出有区分力的题**：`screen_tasks` / `screen_graded` 两阶段筛选（筛 + 复核），默认排除成功率 > 0.9 的近顶题——它们在任何可负担轮数下都筛不稳。
 
+## 与其他工具的关系
+
+它们是*运行*评测的框架；本项目接在它们下游，不重复它们的任务库与模型后端。描述取自各项目自己的 README。
+
+| 工具 | 它做什么（据其 README） | 关系 |
+|---|---|---|
+[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ 学术基准、多种模型后端；按指标报标准误（`bootstrap_stderr`） | 它产出逐题分数 → 交给 `paired_compare` / `interpret`，回答"两个系统的差别可信吗、缺多少样本" |
+[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai)（UK AISI） | 评测框架：提示工程、工具使用、多轮对话、模型评分组件；200+ 预置评测 | 同上；其 scorer 输出是逐样本的，天然可配对 |
+[promptfoo](https://github.com/promptfoo/promptfoo) | 模型/提示 side-by-side 对比与断言；red teaming | 在"比较"上有重叠；本项目补的是统计结论层（功效、地板、可排除范围） |
+[openai/evals](https://github.com/openai/evals) | 基于模板（basic / model-graded）与 JSON 数据的评测注册表 | 同样的下游关系 |
+
 ## API 一览
 
 `import paired_eval as pe` 即可用到全部入口（实现分布在几个模块里，文件名是历史形成的）：
@@ -126,6 +146,7 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个�
 统计 | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
 筛题 | `screen_tasks` `screen_graded` |
 适配 | `make_resilient`（有界重试）`throttled_pmap`（限并发）`Meter`（成本计量） |
+语言 | `set_language("en"\|"zh")` 切换报告文案语言；`report` / `interpret` 也都接受 `lang=` |
 
 每个函数的 docstring 都说明了它防的是什么错；方法学背景见 [docs/lessons.md](docs/lessons.md)。
 
@@ -134,7 +155,7 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个�
 - **是**：比较两个（或多个）系统的统计工具，加上一套可组合的验证器（精确匹配 → 程序判定 → 检索核实 → judge / rubric）。
 - **不是**：大规模题库（内置 31 题只作示例与自测，且为中文）、评测平台或仪表盘、模型供应商客户端。
   跑大规模任务集请用专门的评测框架；把它们输出的**逐题分数**喂给 `paired_compare` / `interpret`，本项目回答的是"这个差别可信吗、还差多少样本"。
-- **状态**：0.1.0，单作者，接口可能变。代码、文案与内置题为中文；报告文本目前只有中文。
+- **状态**：0.1.0，单作者，接口可能变。报告文本有中英两种（`set_language`）；代码注释、异常信息与内置题为中文。
 - [docs/findings.md](docs/findings.md) 是用本工具做的一次案例研究（一对特定模型、三族任务）；数字是实例特定的，展示的是报告该怎么写，不是可引用的普适结论。
 
 ## 文档 · 贡献 · 许可

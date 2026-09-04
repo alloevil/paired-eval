@@ -10,11 +10,16 @@ All notable changes to this project are documented here. The format follows
   the public API of the implementation modules, plus `pe.demo()` / `python3 paired_eval.py` — an offline demo that
   prints a complete report from two stub systems in under a second.
 - `claim_eval.fmt_p`: report p-values below 1e-4 in scientific notation instead of `0.0000`.
+- Report text in English: `set_language("en")` (or `lang="en"` on `interpret` / `report`, `--lang en` on the demo).
+  The Chinese strings are byte-identical to before; a test asserts the English output contains no CJK
+  characters and that both languages expose the same placeholders.
 
 ### Changed
 - README rewritten from the user's perspective (why / install / ten-second demo / your own tasks / how to read the
   report / API / scope). The demo output pasted in both READMEs is asserted equal to the actual output by a test, and
   every code block is executed against the real API.
+- README gains a flow diagram and a grounded "how it relates to other tools" section (lm-evaluation-harness,
+  Inspect, promptfoo, openai/evals — descriptions taken from their own READMEs).
 
 ## [0.1.0] - 2026-09-04
 

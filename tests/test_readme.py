@@ -86,10 +86,10 @@ def test_readme_en_blocks_run():
 
 def test_demo_output_in_readme_matches_actual():
     """README 里贴的 demo 输出必须与 python3 paired_eval.py 的实际输出逐行一致 —— 贴假输出等于撒谎。"""
-    lines = []
-    pe.demo(out=lambda s: lines.extend(s.splitlines()))
-    actual = "\n".join(lines)
-    for name in ("README.md", "README.en.md"):
+    for name, lang in (("README.md", None), ("README.en.md", "en")):
+        lines = []
+        pe.demo(out=lambda s: lines.extend(s.splitlines()), lang=lang)
+        actual = "\n".join(lines)
         text = (ROOT / name).read_text(encoding="utf-8")
         assert actual in text, f"{name}: 贴的 demo 输出与实际不一致。实际:\n{actual}"
 
@@ -106,10 +106,12 @@ def test_readme_numbers_and_links_are_true():
         assert path in zh and path in en, path
         assert (ROOT / path).exists(), path
     # API 表里出现的每个反引号名字都必须是 paired_eval 的真实导出
-    for name in set(re.findall(r"`([a-zA-Z_]+)`", zh.split("## API 一览")[1].split("## 范围")[0])):
-        if name in ("import", "pe"):
-            continue
-        assert name in pe.__all__ or hasattr(pe, name), f"API 表列了不存在的名字: {name}"
+    tables = (zh.split("## API 一览")[1].split("## 范围")[0], en.split("## API overview")[1].split("## Scope")[0])
+    for table in tables:
+        for name in set(re.findall(r"`([a-zA-Z_]+)`", table)):
+            if name in ("import", "pe"):
+                continue
+            assert name in pe.__all__ or hasattr(pe, name), f"API 表列了不存在的名字: {name}"
     assert not re.search(r"\d+ 个测试|\d+ tests", zh + en), "README 不写测试数 —— 它会过期(实测过一次)"
 
 

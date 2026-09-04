@@ -592,13 +592,38 @@ SCAFFOLD_SENSITIVE = ["if-json", "fmt-jsonarr", "fmt-kv", "fmt-yaml"]
 # (原以为 8 道格式题都敏感, 实际 3/8)。
 
 
-def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
+_REPORT_MSG = {
+    "zh": {
+        "informative": "有效样本: {i}/{n} 题有信息(恒过 {sp}, 恒败 {sf})",
+        "refusals": "拒答: {refusals}",
+        "at_top": "触顶(1.000)", "at_bottom": "触底(0.000)",
+        "edge_many": " —— 这些系统之间的 null 与任何交互项都不可解释: 无余量可加/可减",
+        "edge_one": " —— 该系统无余量, 它作为参照时效应会被压缩",
+        "pair": ("{a} vs {b}: Δ={d:+.3f} CI95=[{lo:+.3f},{hi:+.3f}] | "
+                 "逐题p={pp:.3f} 逐轮McNemar={pm:.5f} Holm={ph:.5f} | "
+                 "不一致对 {ao}:{bo} 集中度={conc} | {verdict}"),
+    },
+    "en": {
+        "informative": "informative sample: {i}/{n} tasks informative (always-pass {sp}, always-fail {sf})",
+        "refusals": "refusals: {refusals}",
+        "at_top": "at ceiling (1.000)", "at_bottom": "at floor (0.000)",
+        "edge_many": " — nulls and interaction terms among these systems are uninterpretable: no headroom to gain or lose",
+        "edge_one": " — no headroom; effects measured against it as the reference are compressed",
+        "pair": ("{a} vs {b}: Δ={d:+.3f} CI95=[{lo:+.3f},{hi:+.3f}] | "
+                 "per-task p={pp:.3f} per-round McNemar={pm:.5f} Holm={ph:.5f} | "
+                 "discordant {ao}:{bo} concentration={conc} | {verdict}"),
+    },
+}
+
+
+def report(reports, alpha=0.05, divergence=0.25, refusals=None, lang=None, **kw):
     """把一次交错测量整理成完整诚实报告 —— 每一项都曾在手工报告里被漏掉过。
     reports: run_interleaved 的 reports(也接受任何同构的 {name: 逐题报告})。
     每对给出: 效应量+CI、逐题置换检验、逐轮 McNemar、Holm 校正、不一致对分布与
     集中度(单题异常 vs 跨题复现)、以及 null 分支的可排除范围(claim_eval.interpret)。
     另给全局: 有效样本(饱和诊断)、拒答归属、以及触顶/触底系统的清单 —— 后者是踩过的坑
     (docs/lessons.md#ceiling): 2x2 里三个格子都是 1.000 时, 交互项 -0.667 无法与天花板假象区分。
+    lang: 报告文案语言 "zh"/"en"(默认 claim_eval.DEFAULT_LANG); 字典字段与语言无关。
     返回 {"pairs","saturation","ceiling","text"}; ceiling={"at_top":[...],"at_bottom":[...]}。"""
     sat = saturation(reports, **kw)
     rows = pairwise_compare(reports, **kw)
@@ -606,17 +631,17 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
              for nm, v in reports.items()}
     ceiling = {"at_top": sorted(nm for nm, r in rates.items() if r == 1.0),
                "at_bottom": sorted(nm for nm, r in rates.items() if r == 0.0)}
-    lines = [f"有效样本: {sat['informative']}/{sat['n_tasks']} 题有信息"
-             f"(恒过 {sat['saturated_pass']}, 恒败 {sat['saturated_fail']})"]
+    m = _REPORT_MSG[lang or ce.DEFAULT_LANG]
+    lines = [m["informative"].format(i=sat["informative"], n=sat["n_tasks"],
+                                     sp=sat["saturated_pass"], sf=sat["saturated_fail"])]
     if refusals:
-        lines.append(f"拒答: {refusals}")
-    for edge, where in (("at_top", "触顶(1.000)"), ("at_bottom", "触底(0.000)")):
+        lines.append(m["refusals"].format(refusals=refusals))
+    for edge in ("at_top", "at_bottom"):
         names = ceiling[edge]
         if not names:
             continue
-        warn = (" —— 这些系统之间的 null 与任何交互项都不可解释: 无余量可加/可减"
-                if len(names) > 1 else " —— 该系统无余量, 它作为参照时效应会被压缩")
-        lines.append(f"{where}: {', '.join(names)}{warn}")
+        warn = m["edge_many"] if len(names) > 1 else m["edge_one"]
+        lines.append(f"{m[edge]}: {', '.join(names)}{warn}")
     pairs = []
     for r in rows:
         # 逐轮 McNemar 是主检验(保留重复结构), 故 null 界按逐轮单元数算。
@@ -629,14 +654,13 @@ def report(reports, alpha=0.05, divergence=0.25, refusals=None, **kw):
         # MDE 仍按单元数算。集成测试抓到过这处混用(docs/lessons.md#floor-basis): 10 单元/5 不一致对时,
         # 按单元算地板是 0.002(看起来能显著), 按不一致对算是 0.0625(其实到不了)。
         verdict = ce.interpret(fake, n_units=units, alpha=alpha,
-                               floor_n=r["a_only"] + r["b_only"])
+                               floor_n=r["a_only"] + r["b_only"], lang=lang)
         pairs.append({**r, "units": units, "interpretation": verdict})
         conc = "n/a" if r["concentration"] is None else f"{r['concentration']:.2f}"
-        lines.append(
-            f"{r['a']} vs {r['b']}: Δ={r['mean_diff']:+.3f} "
-            f"CI95=[{r['diff_ci'][0]:+.3f},{r['diff_ci'][1]:+.3f}] | "
-            f"逐题p={r['p_perm']:.3f} 逐轮McNemar={r['mcnemar_p']:.5f} Holm={r['p_mcnemar_holm']:.5f} | "
-            f"不一致对 {r['a_only']}:{r['b_only']} 集中度={conc} | {verdict['text']}")
+        lines.append(m["pair"].format(
+            a=r["a"], b=r["b"], d=r["mean_diff"], lo=r["diff_ci"][0], hi=r["diff_ci"][1],
+            pp=r["p_perm"], pm=r["mcnemar_p"], ph=r["p_mcnemar_holm"],
+            ao=r["a_only"], bo=r["b_only"], conc=conc, verdict=verdict["text"]))
     return {"pairs": pairs, "saturation": sat, "ceiling": ceiling,
             "text": "\n".join(lines)}
 

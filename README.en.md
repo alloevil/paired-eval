@@ -21,6 +21,15 @@ Run each system once, compare averages | Single runs are noisy; a difference of 
 A t-test on two score columns | Scores aren't normal and there are usually only dozens of tasks | **Exact McNemar** (binary) and a **sign-flip permutation test** (continuous), Holm-corrected across comparisons |
 "p > 0.05, so no difference" | "Not significant" means three very different things | **`interpret()` returns one of four verdicts**: significant / bounded null (what effect size is ruled out) / uninformative / powerless (no sample size would help — and what is missing) |
 
+
+```mermaid
+flowchart LR
+    T["tasks<br/>instruction + check"] --> R["run_interleaved<br/>same tasks, interleaved repeats, rotated order"]
+    S["systems<br/>call(prompt) -> str"] --> R
+    R --> P["report<br/>McNemar · permutation · Holm · CI · saturation · ceiling"]
+    P --> I["interpret<br/>significant · bounded null · uninformative · powerless"]
+```
+
 ## Install
 
 ```sh
@@ -32,19 +41,19 @@ Or clone and `import` directly — there is nothing to build and nothing to inst
 ## Ten seconds, no API needed
 
 ```sh
-python3 paired_eval.py
+python3 paired_eval.py --lang en        # or: pe.set_language("en") once, then every report is in English
 ```
 
 Two stub systems run a paired A/B on 4 built-in format tasks (`bare` wraps correct JSON answers in markdown fences). Actual output:
 
 ```
-有效样本: 2/4 题有信息(恒过 2, 恒败 0)
-拒答: {'strict': 0, 'bare': 0}
-触顶(1.000): strict —— 该系统无余量, 它作为参照时效应会被压缩
-bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | 逐题p=0.506 逐轮McNemar=0.00781 Holm=0.00781 | 不一致对 0:8 集中度=0.50 | 显著: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)
+informative sample: 2/4 tasks informative (always-pass 2, always-fail 0)
+refusals: {'strict': 0, 'bare': 0}
+at ceiling (1.000): strict — no headroom; effects measured against it as the reference are compressed
+bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNemar=0.00781 Holm=0.00781 | discordant 0:8 concentration=0.50 | significant: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)
 ```
 
-Reading it (report text is Chinese; field by field): 2 of 4 tasks were solved by both systems every time and carry **no discriminating information** (informative sample 2/4); `strict` is at the ceiling, so effects measured against it are compressed; all 8 discordant pairs favour `strict` and they are spread over 2 tasks (concentration 0.50 — not a single-task artefact); the per-task permutation p is 0.506 because with only 2 informative tasks **its minimum attainable p is 0.5**, while per-round McNemar uses all 16 paired units and gives p = 0.0078. The last clause is `interpret()`'s verdict, ready to paste into a report.
+Reading it: 2 of 4 tasks were solved by both systems every time and carry **no discriminating information** (informative sample 2/4); `strict` is at the ceiling, so effects measured against it are compressed; all 8 discordant pairs favour `strict` and they are spread over 2 tasks (concentration 0.50 — not a single-task artefact); the per-task permutation p is 0.506 because with only 2 informative tasks **its minimum attainable p is 0.5**, while per-round McNemar uses all 16 paired units and gives p = 0.0078. The last clause is `interpret()`'s verdict, ready to paste into a report.
 
 ## Your own systems and tasks
 
@@ -78,12 +87,12 @@ Every field in the report guards against a specific mistake:
 
 | Field | Meaning |
 |---|---|
-有效样本 (informative sample) | Tasks both systems always pass or always fail carry no information; **read the MDE against the informative count** |
-拒答 (refusals) | Dropped calls per system — the refusal rate is part of the result |
-触顶 / 触底 (ceiling / floor) | A system at 1.0 or 0.0 has no headroom; effects against it are compressed and interactions become uninterpretable |
+informative sample | Tasks both systems always pass or always fail carry no information; **read the MDE against the informative count** |
+refusals | Dropped calls per system — the refusal rate is part of the result |
+at ceiling / at floor | A system at 1.0 or 0.0 has no headroom; effects against it are compressed and interactions become uninterpretable |
 Δ, CI95 | Effect size with a bootstrap 95% interval |
-逐题 p / 逐轮 McNemar / Holm | The two paired tests; Holm correction when several systems are compared pairwise |
-不一致对 a:b, 集中度 (discordant pairs, concentration) | Direction and spread of the disagreements; concentration 1.0 means all of it came from one task |
+per-task p / per-round McNemar / Holm | The two paired tests; Holm correction when several systems are compared pairwise |
+discordant a:b, concentration | Direction and spread of the disagreements; concentration 1.0 means all of it came from one task |
 verdict | One of `interpret()`'s four verdicts; nulls carry "what effect this rules out" or "how many units are missing" |
 
 ## What else it does
@@ -110,6 +119,17 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # afterwards: what
 
 **Find tasks that actually discriminate**: `screen_tasks` / `screen_graded` screen in two stages (screen, then confirm) and by default exclude near-ceiling tasks (> 0.9 success) — they cannot be screened reliably at any affordable number of runs.
 
+## How it relates to other tools
+
+These are frameworks for *running* evaluations; paired-eval sits downstream of them and does not duplicate their task libraries or model backends. Descriptions are taken from each project's own README.
+
+| Tool | What it does (per its README) | Relation |
+|---|---|---|
+[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ academic benchmarks over many model backends; per-metric standard errors (`bootstrap_stderr`) | Produces per-task scores → feed them to `paired_compare` / `interpret` to ask whether two systems' difference is credible and how many samples are missing |
+[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) (UK AISI) | Eval framework with prompt engineering, tool use, multi-turn dialog and model-graded components; 200+ pre-built evals | Same: its scorer output is per-sample and pairs naturally |
+[promptfoo](https://github.com/promptfoo/promptfoo) | Side-by-side model/prompt comparison with assertions; red teaming | Overlaps on "compare"; paired-eval adds the statistical verdict layer (power, floors, rule-out bounds) |
+[openai/evals](https://github.com/openai/evals) | Registry of template-based (basic / model-graded) evals fed by JSON data | Same downstream relation |
+
 ## API overview
 
 `import paired_eval as pe` exposes everything (the implementation lives in a few modules whose names are historical):
@@ -122,6 +142,7 @@ Verifiers | `grade_answer` (numeric / choice / set / `\boxed{}`) `extract_claims
 Statistics | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
 Screening | `screen_tasks` `screen_graded` |
 Adapters | `make_resilient` (bounded retry) `throttled_pmap` (bounded concurrency) `Meter` (cost metering) |
+Language | `set_language("en"\|"zh")` — report text language; every `report` / `interpret` also takes `lang=` |
 
 Every function's docstring states which mistake it guards against; the methodology is in [docs/lessons.md](docs/lessons.md).
 
@@ -129,7 +150,7 @@ Every function's docstring states which mistake it guards against; the methodolo
 
 - **Is**: a statistics toolkit for comparing two (or more) systems, plus a composable stack of verifiers (exact match → programmatic check → retrieval → judge / rubric).
 - **Is not**: a large task library (the 31 built-in tasks are examples and self-tests, in Chinese), an evaluation platform or dashboard, or a model-provider client. Use a dedicated eval framework to run large task suites; feed its **per-task scores** into `paired_compare` / `interpret` — this project answers "is that difference credible, and how many more samples would it take?".
-- **Status**: 0.1.0, single author, API may change. Code, messages and built-in tasks are in Chinese; report text is currently Chinese only.
+- **Status**: 0.1.0, single author, API may change. Report text is available in English (`set_language("en")`) and Chinese; code comments, exceptions and the built-in tasks are Chinese.
 - [docs/findings.md](docs/findings.md) is one case study done with this toolbox (one model pair, three task families). Its numbers are instance-specific and show how a conclusion should be written, not results to cite.
 
 ## Docs · Contributing · License

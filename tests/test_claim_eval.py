@@ -1232,6 +1232,56 @@ def test_fmt_p_keeps_magnitude_of_tiny_p():
     assert "p=1.0e-04" in text, text
 
 
+def test_interpret_english_covers_all_verdicts_without_cjk():
+    """英文报告必须覆盖全部四种结论且不含任何中文字符 —— 漏译一处就会在英文 README 里露出中文。
+    两种语言的占位符集合也必须一致, 否则某个数据只在一种语言里被报出来。"""
+    import re
+    import string
+    cjk = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
+    cases = {
+        "significant": ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20), lang="en"),
+        "powerless_units": ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), lang="en"),
+        "powerless": ce.interpret(ce.paired_compare([1.0] * 18, [1.0] * 15 + [0.6, 0.83, 0.5]), lang="en"),
+        "bounded": ce.interpret(ce.paired_compare([1.0, 0.0] * 8, [1.0, 0.0] * 8), n_units=80, floor_n=80, lang="en"),
+        "uninformative": ce.interpret(ce.paired_compare([1.0], [1.0]), n_units=0, lang="en"),
+        "powerless_discordant": ce.interpret(ce.paired_compare([1.0] * 3, [0.0] * 3), floor_n=2, lang="en"),
+    }
+    expect = {"significant": "significant: Δ=", "powerless": "powerless test: only 3 nonzero-difference pairs",
+              "powerless_units": "powerless test: only 3 paired units",
+              "bounded": "no difference detected", "uninformative": "uninformative null",
+              "powerless_discordant": "only 2 discordant pairs"}
+    for k, v in cases.items():
+        assert expect[k] in v["text"], (k, v["text"])
+        assert not cjk.search(v["text"]), f"{k}: 英文文案含中文: {v['text']}"
+    assert "needs at least 6 nonzero-difference pairs" in cases["powerless"]["text"]
+    # verdict 字段与语言无关
+    zh = ce.interpret(ce.paired_compare([1.0] * 18, [1.0] * 15 + [0.6, 0.83, 0.5]))
+    assert zh["verdict"] == cases["powerless"]["verdict"] == "null" and zh["p_floor"] == cases["powerless"]["p_floor"]
+    # 占位符集合一致
+    fields = lambda s: {f for _, f, _, _ in string.Formatter().parse(s) if f}
+    for key in ce._MSG["zh"]:
+        assert fields(ce._MSG["zh"][key]) == fields(ce._MSG["en"][key]), f"占位符不一致: {key}"
+    assert set(ce._MSG["zh"]) == set(ce._MSG["en"])
+
+
+def test_set_language_switches_default_and_validates():
+    prev = ce.DEFAULT_LANG
+    try:
+        assert ce.set_language("en") == "zh"
+        assert ce.DEFAULT_LANG == "en"
+        assert "significant:" in ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20))["text"]
+        assert "显著" in ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20), lang="zh")["text"], "显式 lang 优先"
+        try:
+            ce.set_language("fr")
+            raise AssertionError("不支持的语言应报错")
+        except ValueError as e:
+            assert "fr" in str(e) and "en" in str(e)
+        assert ce.DEFAULT_LANG == "en", "报错不得改变默认值"
+    finally:
+        ce.set_language(prev)
+    assert ce.DEFAULT_LANG == prev
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

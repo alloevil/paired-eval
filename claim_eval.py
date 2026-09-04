@@ -20,6 +20,7 @@
     mcnemar_exact(n_a_only, n_b_only)     # 二值配对: 不一致对的精确双侧检验
     holm_adjust(pvalues)                  # 多重比较: Holm-Bonferroni 控制 FWER
     interpret(compare, n_units)           # 结论翻译: null 强制附可排除范围
+    set_language(lang) / msg(key)         # 报告文案语言(zh/en); 异常与日志仍为中文
     p_floor(n) / min_units_for_alpha(a)   # 检验的 p 地板与所需最小单元数
     required_pairs(mean_diff, sd)          # 连续分数配对设计的样本量规划
 适配:
@@ -550,12 +551,62 @@ def min_units_for_alpha(alpha=0.05, resamples=10000):
     return n
 
 
+DEFAULT_LANG = "zh"
+
+# 报告文案的消息表。只覆盖面向读者的报告文本(interpret / paired_bench.report), 开发者面向的
+# 异常与日志仍是中文。两种语言的占位符必须一致 —— 测试会用同一组参数渲染两份并比对占位符集合。
+_MSG = {
+    "zh": {
+        "significant": "显著: Δ={d:+.3f} CI95=[{lo:+.3f},{hi:+.3f}] p={p} (n={n})",
+        "uninformative": "无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— 不能当作『无差异』的证据",
+        "powerless": ("检验无力: {basis}只有 {fn} 个, 最小可能 p 是 {floor:.3f} >= alpha={alpha}, "
+                      "效应再大也不可能显著(点估计 Δ={d:+.3f}, CI95=[{lo:+.3f},{hi:+.3f}]) —— {need}"),
+        "need": "需至少 {k} 个{basis}",
+        "need_resamples": "alpha 已触及重采样下限, 增加{basis}无用, 需提高 resamples",
+        "bounded": ("未检出差异: p={p:.3f}, 该设计只能排除 >={mde:.0%} 的单方面胜率 "
+                    "(n={n}, 点估计 Δ={d:+.3f}); 低于此的效应无法排除"),
+        "basis_discordant": "不一致对",
+        "basis_nonzero": "非零差值对",
+        "basis_units": "配对单元",
+    },
+    "en": {
+        "significant": "significant: Δ={d:+.3f} CI95=[{lo:+.3f},{hi:+.3f}] p={p} (n={n})",
+        "uninformative": ("uninformative null: n={n} is too small to detect any effect (MDE unreachable) "
+                          "— not evidence of 'no difference'"),
+        "powerless": ("powerless test: only {fn} {basis}, minimum attainable p is {floor:.3f} >= alpha={alpha}; "
+                      "no effect size could reach significance (point estimate Δ={d:+.3f}, "
+                      "CI95=[{lo:+.3f},{hi:+.3f}]) — {need}"),
+        "need": "needs at least {k} {basis}",
+        "need_resamples": "alpha is below the resampling floor; more {basis} will not help — raise resamples",
+        "bounded": ("no difference detected: p={p:.3f}; this design can only rule out a one-sided win rate "
+                    ">= {mde:.0%} (n={n}, point estimate Δ={d:+.3f}); smaller effects cannot be excluded"),
+        "basis_discordant": "discordant pairs",
+        "basis_nonzero": "nonzero-difference pairs",
+        "basis_units": "paired units",
+    },
+}
+
+
+def set_language(lang):
+    """切换报告文案的默认语言("zh" / "en")。显式传 lang= 的调用不受影响。返回之前的默认值。"""
+    global DEFAULT_LANG
+    if lang not in _MSG:
+        raise ValueError(f"不支持的语言 {lang!r}, 可选: {sorted(_MSG)}")
+    prev, DEFAULT_LANG = DEFAULT_LANG, lang
+    return prev
+
+
+def msg(key, lang=None, **kw):
+    """渲染一条报告文案。lang=None 用 DEFAULT_LANG。"""
+    return _MSG[lang or DEFAULT_LANG][key].format(**kw)
+
+
 def fmt_p(p):
     """报告用的 p 值格式: 极小值不打成 "0.0000"(读者会当成零), 而是保留数量级。"""
     return f"{p:.4f}" if p >= 0.0001 else f"{p:.1e}"
 
 
-def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None):
+def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None, lang=None):
     """把配对比较结果翻译成可报告结论 —— null 分支强制附"能排除多大效应"。
     不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
     而那个设计只有 16 个配对单元, MDE=0.46, 实际只能排除 >=46% 的效应。
@@ -566,6 +617,7 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
       5 对不一致时, 地板是 0.0625 而不是 0.002 —— 前者意味着"这个检验根本到不了
       显著", 后者会被写成"未检出差异, 只能排除 >=67%"。两句话给读者的行动完全不同。
       MDE 仍按单元数算(单元越多, 出现不一致对的机会越多), 故两个基数各管一件事。
+    lang: 报告文案语言 "zh"/"en", 默认 DEFAULT_LANG(见 set_language)。verdict 字段与语言无关。
     返回 {"verdict","p_value","mean_diff","diff_ci","n_units","rules_out","p_floor","text"}:
       verdict="significant" -> 报效应量与区间
       verdict="null"        -> rules_out=该设计的 MDE(None 表示样本量下不可达,
@@ -582,52 +634,44 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
            "p_floor": p_floor(fn) if n >= 1 else None}
     if p < alpha:
         out["verdict"] = "significant"
-        out["text"] = (f"显著: Δ={compare['mean_diff']:+.3f} "
-                       f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}] "
-                       f"p={fmt_p(p)} (n={n})")
+        out["text"] = msg("significant", lang, d=compare["mean_diff"], lo=compare["diff_ci"][0],
+                          hi=compare["diff_ci"][1], p=fmt_p(p), n=n)
         return out
     if n < 1:
         # 没有配对单元: 连"地板"都无从谈起, 这是无信息而非检验无力(合成报告场景)
         out["verdict"] = "null"
         out["p_floor"] = None
-        out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
-                       f"不能当作『无差异』的证据")
+        out["text"] = msg("uninformative", lang, n=n)
         return out
     floor = out["p_floor"]
     if floor >= alpha:   # 地板等于 alpha 时显著性也不可达(判据是 p < alpha)
         # p 被样本量地板卡死: 效应再大也拿不到显著, 报"不显著"是误导
         # 三种基数各有不同的补救处方, 措辞必须点明是哪一种
         if floor_n is not None:
-            basis = "不一致对"          # McNemar: 要么加轮次, 要么换能拉开差距的题
+            basis = msg("basis_discordant", lang)   # McNemar: 要么加轮次, 要么换能拉开差距的题
         elif "n_effective" in compare and compare["n_effective"] < n:
-            basis = "非零差值对"        # 置换: 有单元但差值为零, 加轮次未必有用
+            basis = msg("basis_nonzero", lang)      # 置换: 有单元但差值为零, 加轮次未必有用
         else:
-            basis = "配对单元"          # 单纯样本少, 加轮次即可
+            basis = msg("basis_units", lang)        # 单纯样本少, 加轮次即可
         try:
-            need = f"需至少 {min_units_for_alpha(alpha)} 个{basis}"
+            need = msg("need", lang, k=min_units_for_alpha(alpha), basis=basis)
         except ValueError:
             # alpha 已触及重采样下限, 加单元无用 —— 报告函数在此不得抛错
-            need = f"alpha 已触及重采样下限, 增加{basis}无用, 需提高 resamples"
+            need = msg("need_resamples", lang, basis=basis)
         out["verdict"] = "null"
         out["rules_out"] = None
         out["p_floor"] = floor
-        out["text"] = (f"检验无力: {basis}只有 {fn} 个, 最小可能 p 是 {floor:.3f} "
-                       f">= alpha={alpha}, 效应再大也不可能显著"
-                       f"(点估计 Δ={compare['mean_diff']:+.3f}, "
-                       f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}]) "
-                       f"—— {need}")
+        out["text"] = msg("powerless", lang, basis=basis, fn=fn, floor=floor, alpha=alpha,
+                          d=compare["mean_diff"], lo=compare["diff_ci"][0], hi=compare["diff_ci"][1], need=need)
         return out
     mde = detectable_effect(n, alpha=alpha, sims=sims, seed=seed)   # n>=1 已由上方保证
     out["verdict"] = "null"
     out["rules_out"] = mde
     out["p_floor"] = floor
     if mde is None:
-        out["text"] = (f"无信息的 null: n={n} 太小, 任何效应都检不出(MDE 不可达) —— "
-                       f"不能当作『无差异』的证据")
+        out["text"] = msg("uninformative", lang, n=n)
     else:
-        out["text"] = (f"未检出差异: p={p:.3f}, 该设计只能排除 >={mde:.0%} 的单方面胜率 "
-                       f"(n={n}, 点估计 Δ={compare['mean_diff']:+.3f}); "
-                       f"低于此的效应无法排除")
+        out["text"] = msg("bounded", lang, p=p, mde=mde, n=n, d=compare["mean_diff"])
     return out
 
 

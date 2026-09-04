@@ -1069,6 +1069,34 @@ def test_screen_graded_confirm_n_and_mean_boundaries():
     assert [c["id"] for c in r5["kept"]] == ["x"], f"0.79 未贴端应保留: {r5}"
 
 
+def test_report_english_has_no_cjk_and_follows_default_language():
+    """report(lang="en") 的每一行都不得含中文; 不传 lang 时跟随 claim_eval.DEFAULT_LANG。"""
+    import re
+    import claim_eval as ce
+    cjk = re.compile(r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]")
+    reports = {"a": _cell(1.0), "b": _cell(1 / 3), "c": _cell(0.0)}
+    rp = pb.report(reports, refusals={"a": 0, "b": 1, "c": 0}, require_interleaved=False, lang="en")
+    text = rp["text"]
+    for token in ("informative sample:", "refusals:", "at ceiling (1.000): a", "at floor (0.000): c",
+                  "no headroom", "per-task p=", "per-round McNemar=", "Holm=", "discordant", "concentration="):
+        assert token in text, (token, text)
+    assert not cjk.search(text), f"英文报告含中文:\n{text}"
+    # 字典字段与语言无关
+    zh = pb.report(reports, refusals={"a": 0, "b": 1, "c": 0}, require_interleaved=False, lang="zh")
+    assert [p["mean_diff"] for p in zh["pairs"]] == [p["mean_diff"] for p in rp["pairs"]]
+    assert zh["ceiling"] == rp["ceiling"] and zh["saturation"] == rp["saturation"]
+    # 多系统触顶的措辞
+    both = pb.report({"a": _cell(1.0), "b": _cell(1.0), "c": _cell(0.5)}, require_interleaved=False, lang="en")
+    assert "at ceiling (1.000): a, b — nulls and interaction terms among these systems are uninterpretable" in both["text"]
+    # 默认语言跟随 set_language
+    prev = ce.set_language("en")
+    try:
+        assert "informative sample:" in pb.report(reports, require_interleaved=False)["text"]
+    finally:
+        ce.set_language(prev)
+    assert "有效样本:" in pb.report(reports, require_interleaved=False)["text"]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

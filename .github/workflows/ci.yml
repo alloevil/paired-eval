@@ -1,0 +1,52 @@
+# 与 checkall.sh 的分层一致: push/PR 跑前四层(~4 分钟), 每晚跑全部五层(含 6 分钟的变异棘轮)。
+# 第六层(reproduce_findings, 需真实模型调用与 API 配额)刻意不在 CI 里 —— 见 checkall.sh 头部。
+name: ci
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"      # 每日 UTC 03:17: 全量, 含机械变异棘轮
+
+jobs:
+  fast-suite:
+    # 第 1 层在最低与最新支持版本上各跑一遍: requires-python >= 3.9(ast.unparse / math.nextafter)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: sh runtests.sh
+
+  checklist:
+    # 第 1~4 层。check_hooks 要在临时仓库里真提交, 需要 git 身份与完整历史(pre-push 用 @{u}/HEAD~1 算改动行)
+    needs: fast-suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: git config --global user.name ci && git config --global user.email ci@example.invalid
+      - run: sh checkall.sh --fast
+
+  nightly-full:
+    # 第 5 层单独放夜间: 6 分钟的全量变异, 每次 push 都跑既慢又无增量信息(pre-push 已用 --since 跑过改动行)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: git config --global user.name ci && git config --global user.email ci@example.invalid
+      - run: sh checkall.sh

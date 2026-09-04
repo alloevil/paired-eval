@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `paired_eval` module: a single import surface matching the repository name (`import paired_eval as pe`), re-exporting
+  the public API of the implementation modules, plus `pe.demo()` / `python3 paired_eval.py` — an offline demo that
+  prints a complete report from two stub systems in under a second.
+- `claim_eval.fmt_p`: report p-values below 1e-4 in scientific notation instead of `0.0000`.
+
+### Changed
+- README rewritten from the user's perspective (why / install / ten-second demo / your own tasks / how to read the
+  report / API / scope). The demo output pasted in both READMEs is asserted equal to the actual output by a test, and
+  every code block is executed against the real API.
+
 ## [0.1.0] - 2026-09-04
 
 First public cut. Everything below was built and verified in one continuous session; the reasoning behind each piece

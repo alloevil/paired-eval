@@ -550,6 +550,11 @@ def min_units_for_alpha(alpha=0.05, resamples=10000):
     return n
 
 
+def fmt_p(p):
+    """报告用的 p 值格式: 极小值不打成 "0.0000"(读者会当成零), 而是保留数量级。"""
+    return f"{p:.4f}" if p >= 0.0001 else f"{p:.1e}"
+
+
 def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None):
     """把配对比较结果翻译成可报告结论 —— null 分支强制附"能排除多大效应"。
     不这样做的后果本仓库亲身踩过: "Δ=0.000, p=1.000" 被写成"效应根本不存在",
@@ -579,7 +584,7 @@ def interpret(compare, n_units=None, alpha=0.05, sims=400, seed=0, floor_n=None)
         out["verdict"] = "significant"
         out["text"] = (f"显著: Δ={compare['mean_diff']:+.3f} "
                        f"CI95=[{compare['diff_ci'][0]:+.3f},{compare['diff_ci'][1]:+.3f}] "
-                       f"p={p:.4f} (n={n})")
+                       f"p={fmt_p(p)} (n={n})")
         return out
     if n < 1:
         # 没有配对单元: 连"地板"都无从谈起, 这是无信息而非检验无力(合成报告场景)

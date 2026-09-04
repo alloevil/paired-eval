@@ -19,4 +19,4 @@ classifiers = [
 
 # 平铺布局: 可安装的是这几个库模块。mutate_auto / check_hooks 是仓库内的开发工具, 不随包分发。
 [tool.setuptools]
-py-modules = ["answer_match", "claim_eval", "rubric_eval", "eval_task", "paired_bench", "reproduce_findings"]
+py-modules = ["paired_eval", "answer_match", "claim_eval", "rubric_eval", "eval_task", "paired_bench", "reproduce_findings"]

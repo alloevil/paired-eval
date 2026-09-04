@@ -1220,6 +1220,18 @@ def test_required_pairs_grid_and_counting_boundaries():
     assert a == b == 6, (a, b)
 
 
+def test_fmt_p_keeps_magnitude_of_tiny_p():
+    """极小 p 不得打成 "0.0000"(读者会当成零): 边界 0.0001 仍用四位小数, 之下切到科学计数。
+    demo 里 McNemar p=3e-05 曾被显示为 p=0.0000。"""
+    assert ce.fmt_p(0.5) == "0.5000" and ce.fmt_p(1.0) == "1.0000"
+    assert ce.fmt_p(0.0001) == "0.0001", "恰好等于边界仍用小数"
+    assert ce.fmt_p(0.00009999) == "1.0e-04" and ce.fmt_p(3e-05) == "3.0e-05"
+    assert "0.0000" not in ce.fmt_p(1 / 10001)
+    # interpret 的显著分支用它: 完美分离 20 对的 p=1/10001 应显示为 1.0e-04 而非 0.0001
+    text = ce.interpret(ce.paired_compare([1.0] * 20, [0.0] * 20))["text"]
+    assert "p=1.0e-04" in text, text
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

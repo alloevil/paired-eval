@@ -7,7 +7,7 @@
 ```sh
 git clone git@github.com:alloevil/paired-eval.git && cd paired-eval
 git config core.hooksPath hooks     # 启用仓库自带的 pre-commit(3s 快速套件) 与 pre-push(改动行变异检查, ~30s)
-sh runtests.sh                      # 192 测试, ~3 秒, 零外部依赖
+sh runtests.sh                      # 快速套件, ~3 秒, 零外部依赖
 ```
 
 零第三方依赖是**设计约束**，不是暂时状态：新增 `import` 只能来自标准库。
@@ -46,7 +46,7 @@ null 必须附界、p 地板的基数不是单元数、规划器与检验器用�
 ## English summary
 
 - Zero third-party dependencies is a design constraint; only the standard library may be imported.
-- Enable the bundled hooks (`git config core.hooksPath hooks`); `sh runtests.sh` is the 3-second fast suite, `sh checkall.sh --fast` the four cheap verification layers, `sh checkall.sh` adds the ~25-minute mutation ratchet.
+- Enable the bundled hooks (`git config core.hooksPath hooks`); `sh runtests.sh` is the ~3-second fast suite, `sh checkall.sh --fast` the four cheap verification layers, `sh checkall.sh` adds the ~25-minute mutation ratchet.
 - New code must survive the ratchet: a surviving mutant is either a real test gap (write the killing test) or an equivalent mutant (document *why* in `mutate_auto.py`'s header, then refresh the baseline with `--baseline`). Never write a test whose only purpose is to kill an equivalent mutant.
 - Statistical code has extra discipline — read the first section of [docs/lessons.md](docs/lessons.md) before touching `claim_eval.py` primitives or `paired_bench.report()`.
 - Commit messages explain *why*; corrections are recorded, not overwritten; README examples are executed by tests.

@@ -4,13 +4,15 @@
 |---|---|---|
 [findings.md](findings.md) | 想知道"这套工具测出了什么" | 三个维度（harness / model / agent）的实测终报与交互项，每条带统计量、有效样本、可排除范围与复现结果。**实例特定，不可继承。** |
 [lessons.md](lessons.md) | 想把方法学用到自己的评测上 | 二十条教训，按"防的是什么错"组织：检验能不能说话、设计能不能回答问题、工具能不能被信任。代码注释里的锚点都指向这里。 |
+[reading-the-report.md](reading-the-report.md) | 拿到一份报告不知道怎么读 | 每个字段防的是哪一种误读；四种结论的含义与处方（中英双语）。 |
+[related-work.md](related-work.md) | 想知道和 lm-eval-harness / Inspect / promptfoo 的关系 | 它们跑评测、产出逐题分数；这里接在下游做配对统计（中英双语）。 |
 [corrections.md](corrections.md) | 想知道这套结论可信到什么程度 | 被推翻或修正过的结论，原文保留、标注被什么推翻、指向新证据。 |
 
 三份文档的关系：**findings 里每个数字都能追到 lessons 里一条纪律，corrections 里每条修正都指向 findings 里被改写的那一段。**
 
 ## 从哪里开始
 
-- 第一次接触：先读根目录 [README](../README.md)（[English](../README.en.md)），再读 [lessons.md](lessons.md) 的第一节"检验能不能说话"。
+- 第一次接触：先读根目录 [README](../README.md)（[中文](../README.zh-CN.md)），再读 [lessons.md](lessons.md) 的第一节"检验能不能说话"。
 - 要评自己的系统：README 的"快速开始"两段代码 + [`examples/adapter_openai_compat.py`](../examples/adapter_openai_compat.py)。
 - 要贡献代码：[CONTRIBUTING.md](../CONTRIBUTING.md)。
 - 要复现记录的结论：[`reproduce_findings.py`](../paired_eval/reproduce_findings.py) 头部注释；三项检查的成本见 [`checkall.sh`](../checkall.sh) 头部。

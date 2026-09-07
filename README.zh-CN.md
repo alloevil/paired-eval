@@ -147,28 +147,12 @@ print(r["score"])                            # 最终回答的 grounding 率
 
 ## 报告怎么读
 
-| 字段 | 含义 |
-|---|---|
-有效样本 | 两系统全轮次同结果的题不贡献信息；MDE 按有信息题数读 |
-拒答 | 各系统被丢弃的调用数——拒答率是结果的一部分 |
-触顶 / 触底 | 满分或零分的系统无余量；与它比较效应被压缩，交互项不可解释 |
-Δ, CI95 | 效应量与 bootstrap 95% 区间 |
-逐题 p / 逐轮 McNemar / Holm | 两种配对检验；多系统时的多重校正 |
-不一致对 a:b, 集中度 | 分歧的方向与分布；1.0 = 全部来自一道题 |
-结论句 | 显著 · 有界 null（附能排除多大效应）· 无信息 · 检验无力（附缺多少什么） |
+报告里每个字段都在防一种误读——有效样本、触顶/触底、不一致对的集中度，以及四种结论
+（显著 / 有界 null / 无信息 / 检验无力）。"p > 0.05" 有三种含义、三种处方：见
+[docs/reading-the-report.md](docs/reading-the-report.md)。
 
-"p > 0.05" 有三种含义，处方各异：样本太小是无信息；不一致对不够是检验无力（加轮次或换能拉开差距的题）；样本够却没测出来才是有界的 null——报能排除多大效应，而不是"无差异"。
-
-## 与其他工具的关系
-
-它们是*运行*评测的框架；本项目接在下游，不重复任务库与模型后端。描述取自各项目自己的 README。
-
-| 工具 | 它做什么 | 关系 |
-|---|---|---|
-[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ 学术基准、多种模型后端；按指标报标准误 | 它产出逐题分数 → 交给 `paired_compare` / `interpret` |
-[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | 评测框架：提示工程、工具使用、多轮对话、模型评分；200+ 预置评测 | 同上；scorer 输出逐样本，天然可配对 |
-[promptfoo](https://github.com/promptfoo/promptfoo) | 模型/提示 side-by-side 对比与断言；red teaming | 在"比较"上重叠；本项目补验证器叠加与统计结论层 |
-[openai/evals](https://github.com/openai/evals) | 模板 + JSON 数据的评测注册表 | 同样的下游关系 |
+与 lm-evaluation-harness、Inspect、promptfoo、openai/evals 的关系——它们跑评测，这里接住逐题分数并回答"这个差别可信吗"：
+[docs/related-work.md](docs/related-work.md)。
 
 ## API 一览
 

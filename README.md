@@ -169,28 +169,14 @@ Two runs of the same instruction under two agents (or two harnesses) become one 
 
 ## Reading the report
 
-| Field | Meaning |
-|---|---|
-informative sample | Tasks both systems always pass or always fail carry no information; read the MDE against the informative count |
-refusals | Dropped calls per system — the refusal rate is part of the result |
-at ceiling / at floor | A system at 1.0 or 0.0 has no headroom; effects against it are compressed, interactions uninterpretable |
-Δ, CI95 | Effect size with a bootstrap 95% interval |
-per-task p / per-round McNemar / Holm | The two paired tests; Holm correction when several systems are compared |
-discordant a:b, concentration | Direction and spread of the disagreements; 1.0 = all from one task |
-verdict | significant · bounded null (with the ruled-out effect) · uninformative · powerless (with what is missing) |
+Every field in the report guards against one misreading — informative sample, ceiling/floor, discordant
+concentration, and the four verdicts (*significant* / *bounded null* / *uninformative* / *powerless*).
+`"p > 0.05"` means three different things with three different remedies: see
+[docs/reading-the-report.md](docs/reading-the-report.md).
 
-"p > 0.05" means three different things with different remedies: too few units is *uninformative*; too few discordant pairs is *powerless* (add rounds, or tasks that separate the systems); enough units and still nothing is a *bounded null* — report the effect it rules out, never "no difference".
-
-## How it relates to other tools
-
-They are frameworks for *running* evaluations; paired-eval sits downstream and does not duplicate task libraries or model backends. Descriptions are taken from each project's own README.
-
-| Tool | What it does | Relation |
-|---|---|---|
-[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ academic benchmarks over many model backends; per-metric standard errors | Produces per-task scores → feed them to `paired_compare` / `interpret` |
-[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | Eval framework: prompt engineering, tool use, multi-turn dialog, model-graded components; 200+ pre-built evals | Same; scorer output is per-sample and pairs naturally |
-[promptfoo](https://github.com/promptfoo/promptfoo) | Side-by-side model/prompt comparison with assertions; red teaming | Overlaps on "compare"; paired-eval adds stacked verifiers and the statistical verdict layer |
-[openai/evals](https://github.com/openai/evals) | Registry of template-based evals fed by JSON data | Same downstream relation |
+Where this sits next to lm-evaluation-harness, Inspect, promptfoo and openai/evals — they run the
+evaluations, this one takes their per-task scores and says whether the difference is real:
+[docs/related-work.md](docs/related-work.md).
 
 ## API overview
 

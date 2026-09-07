@@ -1,0 +1,118 @@
+{
+ "session": {
+  "id": "01900000-0000-7000-8000-000000000001",
+  "cwd": "/fixtures/project-alpha",
+  "timestamp": "2026-01-15T10:00:00.000Z",
+  "version": "0.1.0",
+  "model": "fixture-provider"
+ },
+ "messages": [
+  {
+   "id": null,
+   "timestamp": "2026-01-15T10:00:01.000Z",
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "fixture: search-needle-alpha please inspect the fixture repo with zebra-token"
+    }
+   ],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": null,
+   "toolName": null,
+   "details": null,
+   "isError": false
+  },
+  {
+   "id": null,
+   "timestamp": "2026-01-15T10:00:05.000Z",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "text",
+     "text": "fixture: acknowledged, listing files now."
+    }
+   ],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": null,
+   "toolName": null,
+   "details": null,
+   "isError": false
+  },
+  {
+   "id": "call-fx-1",
+   "timestamp": "2026-01-15T10:00:06.000Z",
+   "role": "toolCall",
+   "content": [],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": "call-fx-1",
+   "toolName": "shell",
+   "details": "{\"command\":[\"ls\"]}",
+   "isError": false
+  },
+  {
+   "id": "call-fx-1",
+   "timestamp": "2026-01-15T10:00:08.000Z",
+   "role": "toolResult",
+   "content": [
+    {
+     "type": "text",
+     "text": "fixture-file.txt"
+    }
+   ],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": "call-fx-1",
+   "toolName": null,
+   "details": {
+    "status": "ok",
+    "exitCode": 0,
+    "durationMs": 400
+   },
+   "isError": false
+  },
+  {
+   "id": null,
+   "timestamp": "2026-01-15T10:00:10.000Z",
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "fixture: duplicate-prompt-omega"
+    }
+   ],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": null,
+   "toolName": null,
+   "details": null,
+   "isError": false
+  },
+  {
+   "id": null,
+   "timestamp": "2026-01-15T10:00:12.000Z",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "text",
+     "text": "fixture: duplicate handled."
+    }
+   ],
+   "usage": null,
+   "model": null,
+   "provider": null,
+   "toolCallId": null,
+   "toolName": null,
+   "details": null,
+   "isError": false
+  }
+ ]
+}

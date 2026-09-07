@@ -24,4 +24,4 @@ Changelog = "https://github.com/alloevil/paired-eval/blob/main/CHANGELOG.md"
 
 # 只分发 paired_eval 包。mutate_auto / check_hooks / build_site 是仓库内的开发工具, 不随包分发。
 [tool.setuptools.packages.find]
-include = ["paired_eval"]
+include = ["paired_eval", "paired_eval.*"]

@@ -59,6 +59,8 @@ def _blocks(name):
 
 
 def _run(name):
+    import os
+    os.chdir(ROOT)   # README 示例里的相对路径(fixtures)按仓库根解析
     blocks = _blocks(name)
     assert len(blocks) >= 5, f"{name}: 期望至少 5 个 python 块, 得 {len(blocks)}"
     ns = {"judge": _judge, "scores_a": [1, 0, 1, 1, 0, 1, 1, 0], "scores_b": [1, 0, 0, 1, 0, 0, 1, 0]}

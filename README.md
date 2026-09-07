@@ -149,6 +149,24 @@ pe.interpret(pe.paired_compare(scores_a, scores_b), lang="en")["text"]   # after
 
 `screen_tasks` / `screen_graded` screen for tasks that discriminate, in two stages; near-ceiling tasks (> 0.9) are excluded by default — they cannot be screened reliably at any affordable number of runs.
 
+## Evaluating a real agent run
+
+The `agent` axis needs the agent's actual tool observations, not a stub. [AgentXRay](https://github.com/alloevil/AgentXRay)
+already normalises Claude Code / Codex / OpenClaw / Hermes / OMP / Gemini CLI logs into one shape; `paired_eval.adapters.agentxray`
+turns that export into a `trajectory` task, so every claim in the agent's final answer is checked against what the agent actually saw:
+
+```python
+import json
+from paired_eval.adapters import agentxray as ax
+
+sess = json.load(open("tests/fixtures/agentxray-codex-session.json"))   # = curl http://localhost:3800/api/codex/sessions/<id>
+task = ax.trajectory_task(sess)              # id, instruction, observations[], verification: trajectory
+r = pe.evaluate(task, response=ax.final_answer(sess), observations=task["observations"], llm=judge)
+print(r["score"])                            # grounding rate of the final answer
+```
+
+Two runs of the same instruction under two agents (or two harnesses) become one paired unit: score each, then `pe.paired_compare`.
+
 ## Reading the report
 
 | Field | Meaning |
@@ -184,7 +202,7 @@ Verifiers | `evaluate` (`exact` / `retrieval` / `trajectory` / `rubric` / `gated
 Paired A/B | `make_model` `bench_tasks` `judge_check` `run_interleaved` `run_paired` `run_repeated` `report` `pairwise_compare` `reliability_matrix` `saturation` |
 Statistics | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
 Screening | `screen_tasks` `screen_graded` · built-in `ALL_TASKS` (31 Chinese smoke tasks, for examples and self-tests) |
-Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` |
+Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` · `paired_eval.adapters.agentxray` — AgentXRay session export → `trajectory` task (see below) |
 
 ## Scope and status
 

@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `paired_eval.adapters.agentxray`: turns an AgentXRay session export (`GET /api/<platform>/sessions/<id>`)
+  into a `trajectory` task — `observations` from tool results (ids and tool names resolved from the paired
+  tool calls, Hermes-style embedded blocks included), `final_answer`, `instruction`. Tested against a real
+  AgentXRay export; this is the first non-stub path onto the `agent` axis.
+
 ## [0.4.0] - 2026-09-04
 
 ### Changed

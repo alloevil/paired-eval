@@ -129,6 +129,22 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个�
 
 `screen_tasks` / `screen_graded` 两阶段筛选帮你找有区分力的题——成功率 > 0.9 的近顶题默认排除，它们在任何可负担轮数下都筛不稳。
 
+## 评一次真实的 agent 运行
+
+agent 维度需要 agent 真实看到的工具观察，不是桩。[AgentXRay](https://github.com/alloevil/AgentXRay) 已经把 Claude Code / Codex / OpenClaw / Hermes / OMP / Gemini CLI 的日志规范成同一形状；`paired_eval.adapters.agentxray` 把这份导出变成 `trajectory` 任务，agent 最终回答里的每条 claim 都对着它实际看到的观察做 grounding：
+
+```python
+import json
+from paired_eval.adapters import agentxray as ax
+
+sess = json.load(open("tests/fixtures/agentxray-codex-session.json"))   # = curl http://localhost:3800/api/codex/sessions/<id>
+task = ax.trajectory_task(sess)              # id, instruction, observations[], verification: trajectory
+r = pe.evaluate(task, response=ax.final_answer(sess), observations=task["observations"], llm=judge)
+print(r["score"])                            # 最终回答的 grounding 率
+```
+
+同一条指令在两个 agent（或两个 harness）下各跑一次，就是一个配对单元：各自打分，再交给 `pe.paired_compare`。
+
 ## 报告怎么读
 
 | 字段 | 含义 |
@@ -164,7 +180,7 @@ pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个�
 配对 A/B | `make_model` `bench_tasks` `judge_check` `run_interleaved` `run_paired` `run_repeated` `report` `pairwise_compare` `reliability_matrix` `saturation` |
 统计 | `paired_compare` `mcnemar_exact` `holm_adjust` `wilson_ci` `pass_hat_k` `required_tasks` `required_pairs` `detectable_effect` `p_floor` `min_units_for_alpha` `interpret` |
 筛题 | `screen_tasks` `screen_graded` · 内置 `ALL_TASKS`（31 道中文冒烟题，示例与自测用） |
-适配 | `make_resilient` `throttled_pmap` `Meter` `set_language` |
+适配 | `make_resilient` `throttled_pmap` `Meter` `set_language` · `paired_eval.adapters.agentxray` — AgentXRay 会话导出 → `trajectory` 任务（见下） |
 
 ## 范围与状态
 

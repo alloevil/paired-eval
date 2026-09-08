@@ -192,11 +192,16 @@ def json_ld(version):
 
 def site_pages():
     """站点上真实可取的页面, 按 sitemap 顺序: 首页(目录 URL, 不是 index.html) + docs/ 下的每篇 .md。
-    docs/.nojekyll 存在 => Pages 不跑 Jekyll, .md 按原路径静态提供(text/markdown), 故 URL 就是文件名。"""
+    docs/.nojekyll 存在 => Pages 不跑 Jekyll, .md 按原路径静态提供(text/markdown), 故 URL 就是文件名。
+    只列页面: assets/ 下的图片能取到 200 但不是页面, 混进 sitemap 只会稀释它。"""
     return [SITE] + [SITE + p.name for p in sorted(DOCS.glob("*.md"))]
 
 
 def build_robots():
+    """注意作用域: robots 协议以 origin 根路径为准, 爬虫取的是 alloevil.github.io/robots.txt,
+    不会取本仓库子路径下的这一份。本站是共享 origin 的子路径, 故这个文件是**约定与备用**,
+    不具约束力(要真正排除某个路径, 得改根站点那份)。留着它的理由: 有些工具确实会探子路径,
+    且本项目一旦迁到自己的域名, 它立刻就是权威的那一份。"""
     return f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
 
 

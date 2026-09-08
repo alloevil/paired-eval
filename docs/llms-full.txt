@@ -1,0 +1,106 @@
+# paired-eval
+
+paired-eval is a zero-dependency Python library that decides whether one model, agent strategy or harness is really better than another, for engineers who already have per-task A/B results.
+
+## What it is
+
+paired-eval is a method and a small standard-library-only toolkit for comparing two evaluated systems honestly. It does two things that generic eval frameworks leave to the reader. First, it stacks verification: an answer with a unique ground truth is checked by a program, an answer that must stay faithful to sources is checked claim by claim against what the system actually saw, and only quality judgements go to a rubric — the program gates and the rubric scores, so a wrong answer scores 0 and never costs a judge call. Second, it turns the resulting per-task scores into a paired statistical verdict: per-round McNemar exact test, per-task permutation test, Holm correction across systems, bootstrap 95% confidence intervals, saturation and ceiling diagnostics, and sample-size planning both forwards (how many paired tasks do I need) and backwards (what is the smallest effect this task set can see). The verdict distinguishes four states that a bare "p > 0.05" conflates: significant, bounded null with the effect it rules out, uninformative, and powerless. It is not a task library, an evaluation platform or a model client — you inject the model call and the judge yourself.
+
+## Install
+
+```sh
+pip install paired-eval
+```
+
+Requires Python 3.9 or newer. There are no third-party runtime dependencies: `pyproject.toml` declares `dependencies = []` and the package imports only the standard library. Model and judge access is injected by you as two callables, `call(prompt) -> str` and `judge(prompt, system, schema) -> dict`, so there is no vendor binding and nothing to configure at install time. A standard-library-only OpenAI-compatible adapter for both is included at `examples/adapter_openai_compat.py`.
+
+## Quickstart
+
+```sh
+pip install paired-eval
+python3 -m paired_eval --lang en        # offline demo of the statistics layer, no API needed
+```
+
+The demo compares two stub functions, not models: they replay one real failure mechanism in which a bare prompt gets correct JSON wrapped in markdown fences so that parsing fails. Its output is kept identical to the committed code by a test:
+
+```
+informative sample: 2/4 tasks informative (always-pass 2, always-fail 0)
+refusals: {'strict': 0, 'bare': 0}
+at ceiling (1.000): strict — no headroom; effects measured against it as the reference are compressed
+bare vs strict: Δ=-0.500 CI95=[-1.000,+0.000] | per-task p=0.506 per-round McNemar=0.00781 Holm=0.00781 | discordant 0:8 concentration=0.50 | significant: Δ=-0.500 CI95=[-1.000,+0.000] p=0.0078 (n=16)
+```
+
+The minimal use on your own numbers is three lines — two lists of per-task results for the same tasks in the same order:
+
+```python
+import paired_eval as pe
+
+a = [1, 0, 1, 1, 0, 1, 1, 0]          # per-task pass/fail (or scores) for system A
+b = [1, 0, 0, 1, 0, 0, 1, 0]          # same tasks, same order, for system B
+print(pe.interpret(pe.paired_compare(a, b))["text"])
+```
+
+To evaluate rather than only compare, describe each task's verification class and let `evaluate` route it — `exact` for a unique ground truth, `gated` for ground truth plus a quality bar, `trajectory` for claims that must be grounded in observations, `rubric` for a quality bar alone, and `rubric_canary` to check whether a rubric can be fooled by a bluffing answer:
+
+```python
+task = {"id": "sum-explained", "instruction": "What is 12×12? Explain, and give the result starting with 'Answer: '",
+        "verification": {"class": "gated",
+                         "gate":  {"class": "exact", "gold": "144", "kind": "numeric", "marker": "Answer"},
+                         "score": {"class": "rubric", "criteria": [{"text": "explains the calculation", "weight": 1}]}}}
+r = pe.evaluate(task, response=answer, llm=judge)
+print(r["score"], r["verdict"])        # wrong -> 0.0 'gated_out' (judge never called); right -> the rubric score
+```
+
+Plan the sample size before spending model calls, and let `interpret` state what the result can and cannot say afterwards: `pe.required_tasks(0.30, 0.10)`, `pe.required_pairs(0.15, 0.30)`, `pe.detectable_effect(31)`.
+
+## Verifiable claims
+
+Every number below is traceable to a file in the repository, and the machine-readable version with metrics, methods and reproduction commands is at https://alloevil.github.io/paired-eval/claims.json. Numbers that this project has retracted are listed as retracted rather than quietly dropped.
+
+- **No third-party runtime dependencies: 0.** `pyproject.toml` declares `dependencies = []` and `requires-python = ">=3.9"`. Reproduce with `grep '^dependencies' pyproject.toml`. Evidence: https://github.com/alloevil/paired-eval/blob/main/pyproject.toml
+
+- **The 31 built-in tasks cannot see a one-sided win rate below 0.25.** That is the minimum detectable effect at alpha 0.05 and 80% power, computed by a Monte-Carlo grid search whose decision rule is the same `mcnemar_exact` the library uses. Reproduce with `python3 -c "import paired_eval as pe; print(pe.detectable_effect(31))"`. `docs/findings.md` records approximately 0.24 for this call; the committed implementation returns 0.25 today, and the larger, more conservative value is the one claimed here. Consequence: the built-in set is a smoke set, and detecting effects of 10% needs hundreds of paired tasks. Evidence: https://alloevil.github.io/paired-eval/findings.md#power-ceiling
+
+- **Mutation ratchet baseline: 30 surviving mutants.** `mutate_auto.py` mutates every mutation point and reruns the fast suite as the oracle; `checkall.sh` stage 5 documents the full scan as 473 mutation points and fails the release check when a survivor appears that is not in `mutation_baseline.json`. Reproduce with `sh checkall.sh` (about 25 minutes). Evidence: https://github.com/alloevil/paired-eval/blob/main/mutation_baseline.json
+
+- **Strict scaffold vs bare instruction: +0.625 pass rate.** Measured on 4 format-sensitive tasks over 4 interleaved rounds in a 2x2 factorial over model and scaffold: Holm-adjusted p = 0.0117, discordant pairs 0:10, and the effect reproduces across JSON object, JSON array, key=value and YAML rather than coming from one task. Reproduce with `python3 -c "from paired_eval import reproduce_findings as r; r.check_scaffold_effect(call)"` (needs an injected model call, about 32 calls). Evidence: https://alloevil.github.io/paired-eval/findings.md#harness
+
+- **Draft-then-self-correct vs a single pass: +0.750 pass rate.** Same model, same bare instruction, one extra model call, no tools and no prompt constraints added: CI95 [+0.250, +1.000], per-round McNemar p = 0.00049, discordant pairs 12:0, concentration 0.33 — the same order of magnitude as the scaffold effect. Evidence: https://alloevil.github.io/paired-eval/findings.md#agent
+
+- **Prompt wording moved ungrounded claims from 0% to 86-89%.** With the same observations and the same `must_ground` judge, "answer only from the source" left all 8 claims grounded, while "add relevant background you know" produced 84 of 98 and 97 of 109 ungrounded claims across 206 claims. The model-to-model comparison inside the same experiment rested on only 4 paired prompts and is recorded as an uninformative null, so it is deliberately not claimed. Evidence: https://alloevil.github.io/paired-eval/findings.md#prompt-constraint
+
+- **Self-check still adds +0.183 grounding rate on top of an already strict prompt.** Measured on cross-item derivation tasks, the only screened family with headroom (reference cell 0.64-0.89): 18 paired units, CI95 [+0.086, +0.285], p = 0.0046, independently reproduced on 18 fresh units at +0.281, p = 0.0002. So scaffolding and self-check are diminishing but stackable, not substitutes. Evidence: https://alloevil.github.io/paired-eval/corrections.md#substitution-refuted
+
+- **Model effect between the two models measured: bounded below 10%.** 4 tasks over 20 rounds is 80 paired units at MDE 0.10, giving delta = +0.025, CI95 [0.000, +0.075], discordant 5:3, p = 0.727. This is an exclusion, not a proof of equality, and it replaces a retracted claim. Evidence: https://alloevil.github.io/paired-eval/corrections.md#over-claimed-null
+
+Retracted or superseded numbers, which should not be quoted:
+
+- "The model effect does not exist" (delta = 0.000, p = 1.000 on 16 paired units) was withdrawn: that design's MDE was 0.46, so the null excluded almost nothing. The bounded null below 10% above replaces it.
+- The interaction term of -0.667 between scaffold and self-check must not be read as a real interaction: both strict cells sat at the 1.000 ceiling, where the difference is 0 by construction rather than by measurement.
+- The conclusion that the two factors are substitutes, so that either one alone suffices, was refuted by the +0.183 increment above.
+- The sample size of 18 derived from `(1.96·sd/Δ)²` answered the wrong question — that formula asks when a confidence interval excludes 0, not when power reaches 80%. Measured permutation power at n = 18 was 0.45, and `required_pairs` now returns 42 for the same inputs. The +0.183 conclusion stands on its independent reproduction, not on that argument.
+- These findings come from one pair of hosted models and a few task families. They are usage examples of the toolkit, not inheritable general results; rerun the tool on your own systems instead of quoting these numbers.
+
+## When to use it
+
+Use paired-eval when you have, or can produce, per-task results for two systems on the same tasks in the same order, and you need to say publicly whether the difference is real. It is the right tool when you are comparing a model against another model, a prompt or scaffold against another scaffold, or an agent strategy against another strategy, and want the three kept apart with the correct variable held constant. It is also the right tool when your comparison came back negative and you need to report what effect size you actually ruled out, when your task set may be saturated so that both systems always pass and the comparison carries no information, when a system is at 1.0 and interaction terms become uninterpretable, or when you need to plan how many paired tasks to run before spending model calls. Because it depends only on the standard library and on two callables you inject, it drops into an existing harness without adopting a platform.
+
+## When NOT to use it
+
+Do not use paired-eval as your task library or your evaluation platform: the 31 built-in tasks are Chinese smoke tasks for examples and self-tests, their minimum detectable effect is 0.25, and treating them as a benchmark will produce a confident result the data cannot support. Do not use it if your results are not paired — it needs the same tasks in the same order for both systems, and unpaired aggregate scores cannot be rescued after the fact. Do not expect it to call models or run suites for you; it has no model client, no task runner and no dashboard, and it will not generate rubrics for you, only test whether a rubric can be fooled. Do not expect a single verdict to be a general claim about two models: an effect measured on one task family does not transfer, as this project's own screening showed when tasks screened for scaffold sensitivity turned out insensitive to the model. Finally, the project is version 0.4.0 with a single author, so the API may change, and its documentation, code comments and built-in tasks are in Chinese even though reports are available in English.
+
+## Compared to lm-evaluation-harness, Inspect, promptfoo and openai/evals
+
+These are the alternatives the repository actually discusses, with the descriptions taken from each project's own README. lm-evaluation-harness runs 60+ academic benchmarks over many model backends and reports per-metric standard errors; Inspect is an eval framework covering prompt engineering, tool use, multi-turn dialogue and model-graded components with 200+ pre-built evals; openai/evals is a registry of template-based evals fed by JSON data. All three are frameworks for *running* evaluations, and paired-eval sits downstream of them: they produce per-task or per-sample scores, and those scores go into `paired_compare` and `interpret` to get an effect size, an interval and a verdict. paired-eval deliberately does not duplicate their task libraries or model backends. promptfoo is the closest overlap because it also does side-by-side model and prompt comparison with assertions, plus red teaming; relative to it, paired-eval adds stacked verifiers (a programmatic gate before a rubric score) and the statistical verdict layer. The relation table is maintained at https://alloevil.github.io/paired-eval/related-work.md
+
+## FAQ
+
+**How do I install paired-eval and what does it need?** Run `pip install paired-eval`. It requires Python 3.9 or newer and installs no third-party packages, because `pyproject.toml` declares an empty dependency list as a deliberate design constraint. You supply model and judge access yourself as two callables, `call(prompt) -> str` and `judge(prompt, system, schema) -> dict`; a standard-library-only OpenAI-compatible adapter for both is included at `examples/adapter_openai_compat.py`. Nothing else needs configuring, and `python3 -m paired_eval --lang en` runs an offline demo with no API access at all.
+
+**Model A scored 0.72 and model B scored 0.65 on 40 tasks — is A better?** Usually you cannot tell from those two averages, and that is the question paired-eval exists to answer. Feed the per-task results of both systems, in the same task order, to `pe.paired_compare(a, b)` and pass the result to `pe.interpret`. You get an effect size with a bootstrap 95% interval, a per-round McNemar exact p-value, a per-task permutation p-value, Holm correction if several systems are compared, the direction and concentration of the disagreements, and a verdict sentence you can paste into a report. If the tasks are not the same tasks in the same order for both systems, no test can recover the pairing, and the comparison has to be rerun.
+
+**What is the difference between evaluating a model, a harness and an agent?** They are three different questions that hold different things constant, and mixing them yields nothing. Evaluating the *model* holds the tasks and the scaffold fixed and varies the model. Evaluating the *harness* holds the model fixed and varies the prompt, scaffold or tool wiring. Evaluating the *agent* holds the model and scaffold fixed and varies the strategy, for example a single pass against draft-then-self-correct. paired-eval also supports a 2x2 factorial that puts two of these factors on the same scale and automatically flags cells at a ceiling or floor, because an interaction term computed against a cell stuck at 1.0 is an artifact of the design rather than a finding.
+
+**Why does paired-eval refuse to report "no significant difference"?** Because that phrase hides three situations with three different remedies. Too few paired units is *uninformative*: the design could not have seen a realistic effect, and the fix is more units. Too few discordant pairs is *powerless*: the exact test has a p-value floor set by the number of disagreements, so no effect size could reach significance, and the fix is more rounds or tasks that separate the systems. Enough units with a genuinely small effect is a *bounded null*, which must be reported together with the effect it rules out, for example "the model effect is below 10%". This project reached that rule by making the mistake itself and recording it in its corrections log, and it is now enforced in `interpret` so it cannot recur silently.
+
+**Can I trust the numbers in the findings document?** Treat them as instance-specific usage examples rather than inheritable results: they come from one pair of hosted models and a few task families, and the correct move for your own systems is to rerun the tool, not to quote these values. Within that scope they are auditable in three ways. The strongest findings are executable assertions in `paired_eval/reproduce_findings.py`, so drift is detected rather than inherited. Every retracted or revised conclusion is kept in `docs/corrections.md` with its original wording and the evidence that overturned it. And the machine-readable claim list at https://alloevil.github.io/paired-eval/claims.json carries each number with its metric, method, reproduction command and evidence link.

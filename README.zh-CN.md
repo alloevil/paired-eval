@@ -1,7 +1,10 @@
+<h1 align="center">paired-eval</h1>
+
+**paired-eval** 是一个零依赖的 Python 库，替已经拿到逐题 A/B 结果的工程师回答：一个模型、一个 agent 策略、一套 harness，是否真的比另一个更好。
+
 <p align="center">
   <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
 </p>
-<h1 align="center">paired-eval</h1>
 <p align="center"><em>给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。</em></p>
 <p align="center">
   <a href="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml"><img src="https://github.com/alloevil/paired-eval/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -12,6 +15,10 @@
 <p align="center"><a href="https://alloevil.github.io/paired-eval/">主页</a> · <a href="README.md">English</a> · <a href="docs/README.md">文档</a> · <a href="CHANGELOG.md">更新日志</a></p>
 
 纯标准库 Python ≥ 3.9，零依赖。模型与评委都由你注入（`call(prompt) -> str`、`judge(prompt, system, schema) -> dict`），不绑定供应商。
+
+## 它是什么
+
+一套把两个系统比出可信结论的方法与小工具：验证可以叠加——有唯一真值的交给程序（program gate），必须忠于资料的逐条 claim 对观察做 grounding，只剩质量标准的才交给 rubric——然后把逐题分数变成配对统计的结论。它**不是**大规模题库、评测平台、模型客户端，也不是 rubric 生成器：模型与评委由你注入，内置 31 题只作示例与自测。
 
 ## 它评什么
 
@@ -52,6 +59,8 @@ print(r["score"], r["verdict"])        # 答错 -> 0.0 'gated_out'(judge 一次�
 ```sh
 pip install paired-eval
 ```
+
+Python ≥ 3.9，零第三方包——`pyproject.toml` 里 `dependencies = []` 是设计约束。模型与评委由你注入（`call(prompt) -> str`、`judge(prompt, system, schema) -> dict`），只用标准库的 OpenAI 兼容适配器见 [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py)。想不接 API 先看统计层，跑 `python3 -m paired_eval`。
 
 ## 十秒钟看效果（统计层的离线演示）
 
@@ -172,6 +181,45 @@ print(r["score"])                            # 最终回答的 grounding 率
 - **不是**：大规模题库（内置 31 题只作示例与自测）、评测平台、模型客户端、rubric **生成**器（autorubric 的那一半不在这里——这里评的是 rubric 会不会被骗）。跑大规模任务集请用上面那些框架，把逐题分数交给这里。
 - **状态**：0.4.0，单作者，接口可能变。报告中英双语（`set_language`）；代码注释与内置题为中文。
 - [docs/findings.md](docs/findings.md) 是用本工具对一对模型、三族任务做的案例研究：harness 与 agent 的效应各约 +0.6~0.75，模型效应 < 10%，两者收益递减但可叠加。数字是实例特定的，展示的是报告该怎么写。
+
+## 什么时候用它
+
+- 两个系统在**同一批题、同一顺序**上有逐题结果，而你要对外说清这个差别是否可信。
+- 你在比模型与模型、脚手架与脚手架、agent 策略与 agent 策略，并且希望三者分开、各固定各的变量。
+- 比较结果是负的，你需要报出**排除了多大的效应**，而不是一句"无差异"。
+- 你怀疑题集已饱和（两系统恒过），或某个系统触顶 1.0 导致交互项失去意义。
+- 你想在花模型调用之前先算样本量（`required_tasks` / `required_pairs`），或先知道现有题集根本能看见多小的差异（`detectable_effect`）。
+
+## 什么时候不要用它
+
+- **不是评测集**。内置 31 道中文冒烟题的 `detectable_effect(31)` 是 0.25，撑不起一个有把握的结论。请带自己的题，或用下面那些框架跑真实任务集、把逐题分数交过来。
+- **不接受非配对结果**。同一批题、同一顺序是硬要求；只剩汇总分数时，配对无法事后补回来。
+- **不是运行器、不是平台**。没有模型客户端、不跑任务、没有看板；也不**生成** rubric，`rubric_canary` 只检验一份 rubric 会不会被糊弄。
+- **不产出普适结论**。一个题族上测到的效应不会自动迁移：本仓库为脚手架维度筛出的题，换比模型时就不敏感了。
+- **接口尚未稳定**。0.4.0、单作者，接口可能变；代码注释与内置题是中文（报告中英双语）。
+
+## 与 lm-evaluation-harness / Inspect / promptfoo / openai/evals 的关系
+
+描述取自各项目自己的 README；完整表格见 [docs/related-work.md](docs/related-work.md)。
+
+| 工具 | 它做什么 | 与本项目的关系 |
+|---|---|---|
+[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ 学术基准、多种模型后端；按指标报标准误 | 它跑评测；把逐题分数交给 `paired_compare` / `interpret` |
+[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | 评测框架：提示工程、工具使用、多轮对话、模型评分；200+ 预置评测 | 同上；scorer 输出逐样本，天然可配对 |
+[promptfoo](https://github.com/promptfoo/promptfoo) | 模型/提示 side-by-side 对比与断言；red teaming | 在"比较"上重叠；本项目补验证器叠加与统计结论层 |
+[openai/evals](https://github.com/openai/evals) | 模板 + JSON 数据的评测注册表 | 同样的下游关系 |
+
+## 常见问题
+
+**怎么安装、需要什么？** 跑 `pip install paired-eval`。要求 Python ≥ 3.9，不装任何第三方包——`pyproject.toml` 里的空依赖列表是刻意的设计约束。模型与评委由你以两个可调用对象注入：`call(prompt) -> str` 与 `judge(prompt, system, schema) -> dict`；只用标准库的 OpenAI 兼容适配器随仓库提供，见 [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py)。除此之外没有要配置的东西，`python3 -m paired_eval` 不接任何 API 就能跑一遍离线演示。
+
+**A 在 40 道题上得 0.72、B 得 0.65，A 更好吗？** 只看这两个均值通常判断不了，这正是本库存在的理由。把两个系统的逐题结果按同一题序交给 `pe.paired_compare(a, b)`，再交给 `pe.interpret`：你会拿到效应量与 bootstrap 95% 区间、逐轮 McNemar 精确检验 p、逐题置换检验 p、多系统时的 Holm 校正、不一致对的方向与集中度，以及一句可直接写进报告的结论。如果两个系统跑的不是同一批题同一顺序，任何检验都补不回配对，只能重跑。
+
+**评 model、评 harness、评 agent 有什么区别？** 这是三个问题，各自固定不同的变量，混着评什么都得不到。评 **model** 固定题集与脚手架、只换模型；评 **harness** 固定模型、换提示 / 脚手架 / 工具接线；评 **agent** 固定模型与脚手架、只换策略，例如单遍 vs 出草稿后自检修正。2×2 因子设计把两个因子放到同一把尺子上比主效应，并自动报出触顶/触底的格——参照格卡在 1.0 时算出的交互项是设计的产物，不是发现。
+
+**为什么它不肯写"无显著差异"？** 因为这句话盖住了三种情况、三种处方。样本单元太少是**无信息**：这个设计本来就看不见现实量级的效应，处方是加单元。不一致对太少是**检验无力**：精确检验可达的最小 p 由不一致对数决定，效应再大也到不了显著，处方是加轮次或换能拉开差距的题。单元够、效应确实小，才是**有界的 null**——必须连同"排除了多大效应"一起报，例如"模型效应 < 10%"。这个纪律是本项目自己犯错后立的，过程记在 [docs/corrections.md](docs/corrections.md)，现已固化进 `interpret`，从 API 层面不可能再悄悄重犯。
+
+**findings 里的数字可信吗？** 把它们当实例特定的用法示例，不要当可继承的结论：数据来自一对托管模型与几族任务，评自己的系统该复跑工具而不是抄这些数。在这个范围内它们有三重可审：最强的结论已变成 [`paired_eval/reproduce_findings.py`](paired_eval/reproduce_findings.py) 里的可执行断言，漂移会被发现而不是被继承；每一条被推翻或修正过的结论都留在 [docs/corrections.md](docs/corrections.md)，原文保留并指向推翻它的证据；每个对外发布的数字都带指标、方法、复现命令与证据链接，列在 [docs/claims.json](docs/claims.json)。
 
 ## 文档 · 贡献 · 许可
 

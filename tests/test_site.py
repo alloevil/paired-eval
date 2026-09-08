@@ -46,6 +46,8 @@ def test_index_html_states_true_facts():
 
 class _Check(HTMLParser):
     VOID = {"meta", "link", "img", "br", "hr", "input"}
+    # 只声明关系、不取任何字节的 link rel: 它们的绝对 URL 不是"外部依赖"(canonical 是 SEO 必需的)
+    NON_FETCHING_RELS = {"canonical", "alternate"}
 
     def __init__(self):
         super().__init__()
@@ -60,7 +62,8 @@ class _Check(HTMLParser):
         if tag == "link" and a.get("rel") == "stylesheet":
             self.external.append(a.get("href"))
         if tag in ("img", "link") and a.get("href" if tag == "link" else "src", "").startswith(("http://", "https://")):
-            self.external.append(a.get("href" if tag == "link" else "src"))
+            if not (tag == "link" and a.get("rel") in self.NON_FETCHING_RELS):
+                self.external.append(a.get("href" if tag == "link" else "src"))
         for k in ("src", "href"):
             v = a.get(k)
             if v and not v.startswith(("http://", "https://", "#", "mailto:")):

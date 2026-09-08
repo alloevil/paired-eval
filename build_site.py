@@ -206,8 +206,12 @@ def build_robots():
 
 
 def build_sitemap():
+    """唯一需要写进文件的注释: URL 用 .md 而不是 .html。看着像 bug, 改掉会让 7 条全部 404。
+    (资产不入 sitemap 是默认行为, 不必在文件里说明 —— 见 site_pages。)"""
     urls = "\n".join(f"  <url><loc>{u}</loc></url>" for u in site_pages())
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<!-- docs/.nojekyll is set, so Jekyll never converts these: pages are served at .md; "
+            "the .html forms return 404. -->\n"
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"{urls}\n</urlset>\n")
 

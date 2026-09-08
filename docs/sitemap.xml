@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- docs/.nojekyll is set, so Jekyll never converts these: pages are served at .md; the .html forms return 404. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://alloevil.github.io/paired-eval/</loc></url>
   <url><loc>https://alloevil.github.io/paired-eval/README.md</loc></url>

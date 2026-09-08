@@ -26,10 +26,16 @@ REPO = "https://github.com/alloevil/paired-eval"
 SITE = "https://alloevil.github.io/paired-eval/"
 PYPI = "https://pypi.org/project/paired-eval/"
 HUB = "https://alloevil.github.io/projects/"   # 作品集索引页; 站点间互链让爬虫从任一项目走到其余项目
+NAMESAKE = "https://github.com/labsyspharm/paired-eval"   # 同名但无关的项目; 首页点名并外链, 让走错门的读者一眼自证, 不必靠搜索结果排序去分辨
 ABOUT = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."   # 与 GitHub About 同句; 主页 meta description 与 CITATION abstract 都从这里取
 INSTALL = "pip install paired-eval"
 TITLE = "paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems"
 DESCRIPTION = f"{ABOUT} Zero dependencies, Python 3.9+."
+# 只陈述可核对的事实: 各自的安装/导入名, 以及对方 README 的自述; 不评价对方。
+NAMESAKE_NOTE_ZH = (f'同名提醒：本项目是 PyPI 上的 <a href="{PYPI}">paired-eval</a>（<code class="inl">import paired_eval</code>），评的是 LLM 系统；'
+                    f'另有一个同名但无关的项目 <a href="{NAMESAKE}">labsyspharm/paired-eval</a>，按其自述是机器学习预测值与真实标签的配对评估，导入名 <code class="inl">pairedeval</code>。')
+NAMESAKE_NOTE_EN = (f'Same name, different project: this is <a href="{PYPI}">paired-eval on PyPI</a> (<code class="inl">import paired_eval</code>), for LLM systems; '
+                    f'<a href="{NAMESAKE}">labsyspharm/paired-eval</a> is an unrelated project of the same name — by its own README, paired evaluation of machine-learning predictions against true labels, imported as <code class="inl">pairedeval</code>.')
 
 
 def demo_output(lang):
@@ -263,6 +269,7 @@ def build():
 </div>
 <pre class="install"><code>{e(INSTALL)}</code></pre>
 <p class="meta">v{e(version)} · MIT · Python ≥ 3.9 · {zh_en("零第三方依赖 · 模型调用由你注入", "no third-party dependencies · you inject the model call")}</p>
+<p class="meta">{zh_en(NAMESAKE_NOTE_ZH, NAMESAKE_NOTE_EN)}</p>
 </div></header>
 
 <main class="wrap">

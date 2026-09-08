@@ -16,6 +16,8 @@
 
 纯标准库 Python ≥ 3.9，零依赖。模型与评委都由你注入（`call(prompt) -> str`、`judge(prompt, system, schema) -> dict`），不绑定供应商。
 
+> **同名，但不是同一个项目。** 本项目就是发布在 [PyPI](https://pypi.org/project/paired-eval/) 上的 `paired-eval`，源码在本仓库——`pip install paired-eval`，导入名 `import paired_eval`。另有一个同名的无关项目 [labsyspharm/paired-eval](https://github.com/labsyspharm/paired-eval)，按它自己的 README 是"paired evaluation 的 O(n log n) 实现"，用于机器学习预测值与真实标签的配对比较，从 GitHub 安装、导入名为 `pairedeval`。两者互不为分支，也不是同一项目的不同版本。
+
 ## 它是什么
 
 一套把两个系统比出可信结论的方法与小工具：验证可以叠加——有唯一真值的交给程序（program gate），必须忠于资料的逐条 claim 对观察做 grounding，只剩质量标准的才交给 rubric——然后把逐题分数变成配对统计的结论。它**不是**大规模题库、评测平台、模型客户端，也不是 rubric 生成器：模型与评委由你注入，内置 31 题只作示例与自测。

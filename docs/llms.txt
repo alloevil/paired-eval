@@ -1,0 +1,23 @@
+# paired-eval
+
+> paired-eval is a zero-dependency Python library that decides whether one model, agent strategy or harness is really better than another, for engineers who already have per-task A/B results.
+
+Two averages on the same task set do not tell you which system is better, and an LLM judge saying "A is better" is not evidence either. paired-eval takes the per-task results of two systems, runs paired tests on them (per-round McNemar exact, per-task permutation, Holm correction, bootstrap CI), and returns a verdict that distinguishes *significant* from *bounded null* (stating the effect it rules out), *uninformative* and *powerless*. It also stacks verifiers so that a programmatic check gates the answer and a rubric only scores what already works. Install with `pip install paired-eval`; it needs Python 3.9+ and no third-party packages, and you inject both the model call and the judge.
+
+## Docs
+- [Project home](https://alloevil.github.io/paired-eval/): what it evaluates, how verification layers stack, and a runnable offline demo of the report
+- [Documentation index](https://alloevil.github.io/paired-eval/README.md): which document answers which question
+- [Reading the report](https://alloevil.github.io/paired-eval/reading-the-report.md): what every report field guards against, and the three different meanings of "p > 0.05" (bilingual)
+- [Methodology lessons](https://alloevil.github.io/paired-eval/lessons.md): the twenty lessons each statistical primitive was built to enforce
+- [How it relates to other tools](https://alloevil.github.io/paired-eval/related-work.md): lm-evaluation-harness, Inspect, promptfoo and openai/evals run the evaluations; this sits downstream of them
+- [README](https://github.com/alloevil/paired-eval/blob/main/README.md): install, quickstart, API overview
+
+## Evidence
+- [Findings](https://alloevil.github.io/paired-eval/findings.md): a case study on one model pair — strict scaffold vs bare instruction is +0.625 (Holm p=0.0117, discordant 0:10), draft-then-self-correct is +0.750 (McNemar p=0.00049, discordant 12:0), and the model effect is a bounded null below 10% (80 paired units, MDE 0.10)
+- [Corrections](https://alloevil.github.io/paired-eval/corrections.md): every conclusion this project retracted, the original wording kept and the evidence that overturned it — including the "the two factors are substitutes" reading, refuted by a +0.183 increment (CI95 [+0.086, +0.285], p=0.0046, reproduced at +0.281)
+- [Machine-readable claims](https://alloevil.github.io/paired-eval/claims.json): each number with its metric, method, reproduction command and evidence link
+- [Reproduction checks](https://github.com/alloevil/paired-eval/blob/main/paired_eval/reproduce_findings.py): the recorded findings turned into executable assertions, so drift is detected instead of inherited
+
+## Source
+- [GitHub repository](https://github.com/alloevil/paired-eval)
+- [PyPI package](https://pypi.org/project/paired-eval/)

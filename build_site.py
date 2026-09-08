@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成 docs/index.html —— 项目主页(GitHub Pages 从 docs/ 提供)。
+"""生成 docs/index.html 与站点抓取产物 —— 项目主页(GitHub Pages 从 docs/ 提供)。
 
 为什么用生成器而不是手写 HTML: 页面里贴的 demo 输出、版本号、安装命令都是事实, 手写会漂移。
 生成器从代码取真值; tests/test_site.py 断言"仓库里的 index.html == 生成器此刻的输出", 谁手改都会红。
 页面零外部依赖(无外链脚本/样式/字体), 与项目"零依赖"一致; 中英切换是 15 行内联 JS。
+robots.txt / sitemap.xml 同理由生成器产出: sitemap 从 docs/ 下真实存在的 .md 枚举, 新增一篇文档
+不会漏、删掉一篇不会留下 404(docs/ 有 .nojekyll, Jekyll 不参与, 故 .md 按原路径提供)。
 
-用法: python3 build_site.py        # 重写 docs/index.html
+用法: python3 build_site.py        # 重写 docs/index.html、robots.txt、sitemap.xml
       python3 build_site.py --check  # 只比对, 不写; 不一致时退出码 1
 """
 import html
+import json
 import pathlib
 import sys
 
@@ -18,9 +21,14 @@ import paired_eval as pe  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent
 OUT = ROOT / "docs" / "index.html"
+DOCS = ROOT / "docs"
 REPO = "https://github.com/alloevil/paired-eval"
+SITE = "https://alloevil.github.io/paired-eval/"
+PYPI = "https://pypi.org/project/paired-eval/"
 ABOUT = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."   # 与 GitHub About 同句; 主页 meta description 与 CITATION abstract 都从这里取
 INSTALL = "pip install paired-eval"
+TITLE = "paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems"
+DESCRIPTION = f"{ABOUT} Zero dependencies, Python 3.9+."
 
 
 def demo_output(lang):
@@ -158,6 +166,56 @@ def zh_en(zh, en, tag="span", cls=""):
     return f'<{tag} class="zh{c}">{zh}</{tag}><{tag} class="en{c}">{en}</{tag}>'
 
 
+def json_ld(version):
+    """schema.org SoftwareApplication —— 让检索与答案引擎把本项目当"软件"读, 而不是当散文猜。
+    只写能在仓库里核对的事实: 许可来自 LICENSE(MIT), 语言来自实际源码, 版本来自 paired_eval.__version__,
+    安装地址来自 pyproject 的 Homepage/PyPI 包名。json.dumps 保证语法合法(手写 JSON-LD 最常见的错是尾逗号)。"""
+    return json.dumps({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "paired-eval",
+        "description": ABOUT,
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "url": SITE,
+        "codeRepository": REPO,
+        "programmingLanguage": "Python",
+        "softwareVersion": version,
+        "installUrl": PYPI,
+        "sameAs": [PYPI, REPO],
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": True,
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+        "author": {"@type": "Person", "name": "allo", "url": "https://github.com/alloevil"},
+    }, ensure_ascii=False, indent=2)
+
+
+def site_pages():
+    """站点上真实可取的页面, 按 sitemap 顺序: 首页(目录 URL, 不是 index.html) + docs/ 下的每篇 .md。
+    docs/.nojekyll 存在 => Pages 不跑 Jekyll, .md 按原路径静态提供(text/markdown), 故 URL 就是文件名。
+    只列页面: assets/ 下的图片能取到 200 但不是页面, 混进 sitemap 只会稀释它。"""
+    return [SITE] + [SITE + p.name for p in sorted(DOCS.glob("*.md"))]
+
+
+def build_robots():
+    """注意作用域: robots 协议以 origin 根路径为准, 爬虫取的是 alloevil.github.io/robots.txt,
+    不会取本仓库子路径下的这一份。本站是共享 origin 的子路径, 故这个文件是**约定与备用**,
+    不具约束力(要真正排除某个路径, 得改根站点那份)。留着它的理由: 有些工具确实会探子路径,
+    且本项目一旦迁到自己的域名, 它立刻就是权威的那一份。"""
+    return f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
+
+
+def build_sitemap():
+    """唯一需要写进文件的注释: URL 用 .md 而不是 .html。看着像 bug, 改掉会让 7 条全部 404。
+    (资产不入 sitemap 是默认行为, 不必在文件里说明 —— 见 site_pages。)"""
+    urls = "\n".join(f"  <url><loc>{u}</loc></url>" for u in site_pages())
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<!-- docs/.nojekyll is set, so Jekyll never converts these: pages are served at .md; "
+            "the .html forms return 404. -->\n"
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            f"{urls}\n</urlset>\n")
+
+
 def build():
     e = html.escape
     version = pe.__version__
@@ -175,10 +233,19 @@ def build():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems</title>
-<meta name="description" content="{ABOUT} Zero dependencies, Python 3.9+.">
+<title>{TITLE}</title>
+<meta name="description" content="{DESCRIPTION}">
+<link rel="canonical" href="{SITE}">
+<meta property="og:url" content="{SITE}">
+<meta property="og:title" content="{TITLE}">
+<meta property="og:description" content="{DESCRIPTION}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <style>{CSS}</style>
+<script type="application/ld+json">
+{json_ld(version)}
+</script>
 </head>
 <body data-lang="zh">
 <header class="hero"><div class="wrap">
@@ -291,16 +358,20 @@ paired-eval v{e(version)} · MIT · <a href="{REPO}">{REPO.replace("https://", "
 
 
 def main(argv):
-    doc = build()
+    """三份产物一起生成、一起校验: index.html 漂移与 sitemap 漏页是同一类错(仓库里的事实与站点不符)。"""
+    artifacts = [(OUT, build()), (DOCS / "robots.txt", build_robots()), (DOCS / "sitemap.xml", build_sitemap())]
     if "--check" in argv:
-        current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
-        if current != doc:
-            print("docs/index.html 与生成器输出不一致 —— 运行 python3 build_site.py 重新生成")
+        stale = [p for p, text in artifacts
+                 if (p.read_text(encoding="utf-8") if p.exists() else "") != text]
+        if stale:
+            names = ", ".join(str(p.relative_to(ROOT)) for p in stale)
+            print(f"{names} 与生成器输出不一致 —— 运行 python3 build_site.py 重新生成")
             return 1
-        print("docs/index.html 与生成器一致")
+        print("docs/ 产物与生成器一致")
         return 0
-    OUT.write_text(doc, encoding="utf-8")
-    print(f"已写入 {OUT.relative_to(ROOT)} ({len(doc.splitlines())} 行, v{pe.__version__})")
+    for p, text in artifacts:
+        p.write_text(text, encoding="utf-8")
+    print(f"已写入 {', '.join(str(p.relative_to(ROOT)) for p, _ in artifacts)} (v{pe.__version__})")
     return 0
 
 

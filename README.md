@@ -1,7 +1,10 @@
+<h1 align="center">paired-eval</h1>
+
+**paired-eval** is a zero-dependency Python library that decides whether one model, agent strategy or harness is really better than another, for engineers who already have per-task A/B results.
+
 <p align="center">
   <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
 </p>
-<h1 align="center">paired-eval</h1>
 <p align="center"><em>Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics.</em></p>
 <p align="center">
   <a href="https://pypi.org/project/paired-eval/"><img src="https://img.shields.io/pypi/v/paired-eval.svg" alt="PyPI"></a>
@@ -38,6 +41,18 @@ Three things it does, and why each exists:
 | **Paired statistics** — per-round McNemar + per-task permutation, Holm correction, bootstrap CI, sample-size planning | Unpaired means on 40 tasks hide a 0.3 effect behind noise; paired tests on the same tasks do not |
 | **Program gate, then rubric** — an answer that fails a programmatic check scores 0 and the judge is never called | Judges get fooled on "does it work"; programs do not. Spend judge calls only on ranking answers that already work |
 | **Saturation & ceiling diagnostics** — tasks both systems always pass carry no information; a system at 1.0 has no headroom | Most "no difference" results are really "no informative tasks", and the remedy is different |
+
+## What it is
+
+paired-eval is a method and a small toolkit for comparing two evaluated systems honestly. It stacks verification — a program checks whatever has a unique ground truth, claims that must stay faithful to sources are grounded one by one against what the system actually saw, and only quality judgements reach a rubric — and then turns the resulting per-task scores into a paired statistical verdict. It is not a task library, an evaluation platform, a model client or a rubric generator: you inject the model call and the judge, and the 31 built-in tasks are examples and self-tests.
+
+## Install
+
+```sh
+pip install paired-eval
+```
+
+Python 3.9 or newer, no third-party packages — `pyproject.toml` declares `dependencies = []` as a design constraint. Model and judge access is yours to inject as `call(prompt) -> str` and `judge(prompt, system, schema) -> dict`; a standard-library-only OpenAI-compatible adapter for both is in [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py). To see the statistics layer without any API access, run `python3 -m paired_eval --lang en`.
 
 ## What it evaluates
 
@@ -196,6 +211,45 @@ Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` · `paired_e
 - **Is not**: a large task library (the 31 built-in tasks are examples and self-tests), an evaluation platform, a model client, or a rubric **generator** (the autorubric half is not here — this evaluates whether a rubric can be fooled). Run large suites with the frameworks above and hand their per-task scores to this.
 - **Status**: 0.4.0, single author, API may change. Reports in English and Chinese (`set_language`); code comments and built-in tasks are Chinese.
 - [docs/findings.md](docs/findings.md) is a case study done with this toolbox on one model pair and three task families: harness and agent effects of about +0.6–0.75, model effect < 10%, the two with diminishing but stackable returns. The numbers are instance-specific and show how a conclusion should be written.
+
+## When to use it
+
+- You have per-task results for two systems on the **same tasks in the same order**, and you need to state publicly whether the difference is real.
+- You are comparing a model against a model, a scaffold against a scaffold, or an agent strategy against an agent strategy, and want the three kept apart with the right variable held constant.
+- Your comparison came back negative and you have to report **which effect size you ruled out**, not "no difference".
+- You suspect the task set is saturated (both systems always pass), or a system sits at 1.0 so interaction terms stop meaning anything.
+- You want to size the run before spending model calls (`required_tasks` / `required_pairs`) or to know what your existing task set can even see (`detectable_effect`).
+
+## When NOT to use it
+
+- **Not a benchmark suite.** The 31 built-in tasks are Chinese smoke tasks; `detectable_effect(31)` is 0.25, so they cannot support a confident verdict. Bring your own tasks, or run a real suite with the frameworks below and hand the per-task scores here.
+- **Not for unpaired results.** The same tasks in the same order for both systems is a hard requirement; aggregate scores cannot be re-paired after the fact.
+- **Not a runner or a platform.** No model client, no task execution, no dashboard — and no rubric *generator*; `rubric_canary` only tests whether a rubric can be fooled.
+- **Not a source of general claims.** An effect measured on one task family does not transfer: tasks screened here for scaffold sensitivity turned out insensitive to the model.
+- **Not stable yet.** 0.4.0, single author, API may change; code comments and built-in tasks are in Chinese, though reports are bilingual.
+
+## Compared to lm-evaluation-harness, Inspect, promptfoo and openai/evals
+
+Descriptions are taken from each project's own README; the full table lives in [docs/related-work.md](docs/related-work.md).
+
+| Tool | What it does | Relation to paired-eval |
+|---|---|---|
+[lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | 60+ academic benchmarks over many model backends; per-metric standard errors | Runs the evaluations; feed its per-task scores to `paired_compare` / `interpret` |
+[Inspect](https://github.com/UKGovernmentBEIS/inspect_ai) | Eval framework: prompt engineering, tool use, multi-turn dialog, model-graded components; 200+ pre-built evals | Same; scorer output is per-sample and pairs naturally |
+[promptfoo](https://github.com/promptfoo/promptfoo) | Side-by-side model/prompt comparison with assertions; red teaming | Overlaps on "compare"; paired-eval adds stacked verifiers and the statistical verdict layer |
+[openai/evals](https://github.com/openai/evals) | Registry of template-based evals fed by JSON data | Same downstream relation |
+
+## FAQ
+
+**How do I install it and what does it need?** Run `pip install paired-eval`. It requires Python 3.9 or newer and installs no third-party packages, because `pyproject.toml` declares an empty dependency list as a deliberate design constraint. You supply model and judge access yourself as two callables, `call(prompt) -> str` and `judge(prompt, system, schema) -> dict`; a standard-library-only OpenAI-compatible adapter for both ships in [examples/adapter_openai_compat.py](examples/adapter_openai_compat.py). Nothing else needs configuring, and `python3 -m paired_eval --lang en` runs an offline demo with no API access at all.
+
+**A scored 0.72 and B scored 0.65 on 40 tasks — is A better?** Usually you cannot tell from those two averages, which is the question this library exists to answer. Pass the per-task results of both systems, in the same task order, to `pe.paired_compare(a, b)` and hand the result to `pe.interpret`. You get an effect size with a bootstrap 95% interval, a per-round McNemar exact p-value, a per-task permutation p-value, Holm correction across several systems, the direction and concentration of the disagreements, and a verdict sentence you can paste into a report. If the two systems did not run the same tasks in the same order, no test can recover the pairing and the comparison has to be rerun.
+
+**What is the difference between evaluating a model, a harness and an agent?** They are three questions that hold different things constant, and mixing them yields nothing. Evaluating the *model* fixes the tasks and the scaffold and varies the model; evaluating the *harness* fixes the model and varies the prompt, scaffold or tool wiring; evaluating the *agent* fixes model and scaffold and varies the strategy, for example a single pass against draft-then-self-correct. A 2×2 factorial puts two factors on one scale and flags cells at a ceiling or floor automatically, because an interaction computed against a cell stuck at 1.0 is an artifact of the design rather than a finding.
+
+**Why won't it report "no significant difference"?** Because that phrase hides three situations with three different remedies. Too few paired units is *uninformative*: the design could never have seen a realistic effect, and the fix is more units. Too few discordant pairs is *powerless*: the exact test's attainable minimum p-value is set by the number of disagreements, so no effect size could reach significance, and the fix is more rounds or tasks that actually separate the systems. Enough units with a genuinely small effect is a *bounded null*, which must be reported together with the effect it excludes, for example "the model effect is below 10%". This project made that mistake itself, recorded it in [docs/corrections.md](docs/corrections.md), and then fixed it in `interpret` so it cannot recur silently.
+
+**Can I trust the numbers in the findings?** Treat them as instance-specific usage examples, not inheritable results: they come from one pair of hosted models and a few task families, and the right move for your own systems is to rerun the tool rather than quote these values. Within that scope they are auditable three ways: the strongest findings are executable assertions in [`paired_eval/reproduce_findings.py`](paired_eval/reproduce_findings.py) so drift is detected instead of inherited, every retracted or revised conclusion is kept in [docs/corrections.md](docs/corrections.md) with its original wording and the evidence that overturned it, and each published number is listed with its metric, method, reproduction command and evidence link in [docs/claims.json](docs/claims.json).
 
 ## Docs · Contributing · License
 

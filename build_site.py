@@ -25,6 +25,7 @@ DOCS = ROOT / "docs"
 REPO = "https://github.com/alloevil/paired-eval"
 SITE = "https://alloevil.github.io/paired-eval/"
 PYPI = "https://pypi.org/project/paired-eval/"
+HUB = "https://alloevil.github.io/projects/"   # 作品集索引页; 站点间互链让爬虫从任一项目走到其余项目
 ABOUT = "Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics."   # 与 GitHub About 同句; 主页 meta description 与 CITATION abstract 都从这里取
 INSTALL = "pip install paired-eval"
 TITLE = "paired-eval — 配对评测 LLM 系统 · Paired A/B evaluation for LLM systems"
@@ -348,7 +349,7 @@ def build():
 
 <footer class="wrap">
 <span class="bar" style="background:var(--accent)"></span><span class="bar" style="background:var(--accent2)"></span>
-paired-eval v{e(version)} · MIT · <a href="{REPO}">{REPO.replace("https://", "")}</a> · {zh_en("本页无外部脚本、样式或字体。", "This page loads no external scripts, styles or fonts.")}
+paired-eval v{e(version)} · MIT · <a href="{REPO}">{REPO.replace("https://", "")}</a> · <a href="{HUB}">{zh_en("更多项目", "More projects by allo")}</a> · {zh_en("本页无外部脚本、样式或字体。", "This page loads no external scripts, styles or fonts.")}
 </footer>
 <script>{JS}</script>
 </body>

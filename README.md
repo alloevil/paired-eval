@@ -24,6 +24,8 @@ says *significant* / *bounded null* (with the effect it rules out) / *uninformat
 pip install paired-eval
 ```
 
+> **Same name, different project.** This is the `paired-eval` published on [PyPI](https://pypi.org/project/paired-eval/) and developed in this repository — `pip install paired-eval`, then `import paired_eval`. An unrelated project shares the name: [labsyspharm/paired-eval](https://github.com/labsyspharm/paired-eval), which by its own README is "an O(n log n) implementation of paired evaluation" of machine-learning predictions against true labels, installed from GitHub and imported as `pairedeval`. Neither is a fork or a version of the other.
+
 ```python
 import paired_eval as pe
 

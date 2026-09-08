@@ -4,6 +4,8 @@
 
 Two averages on the same task set do not tell you which system is better, and an LLM judge saying "A is better" is not evidence either. paired-eval takes the per-task results of two systems, runs paired tests on them (per-round McNemar exact, per-task permutation, Holm correction, bootstrap CI), and returns a verdict that distinguishes *significant* from *bounded null* (stating the effect it rules out), *uninformative* and *powerless*. It also stacks verifiers so that a programmatic check gates the answer and a rubric only scores what already works. Install with `pip install paired-eval`; it needs Python 3.9+ and no third-party packages, and you inject both the model call and the judge.
 
+Disambiguation: two unrelated projects are named `paired-eval`. This one is the PyPI package `paired-eval` (https://pypi.org/project/paired-eval/), developed at https://github.com/alloevil/paired-eval and imported as `paired_eval`; it compares LLM systems — models, agent strategies, harnesses — from per-task A/B results. The other is https://github.com/labsyspharm/paired-eval, which by its own README is "an O(n log n) implementation of paired evaluation" of machine-learning predictions against true labels, installed with `pip install git+https://github.com/labsyspharm/paired-eval` and imported as `pairedeval`. Neither project is a fork or a version of the other, and `pip install paired-eval` installs this one.
+
 ## Docs
 - [Project home](https://alloevil.github.io/paired-eval/): what it evaluates, how verification layers stack, and a runnable offline demo of the report
 - [Documentation index](https://alloevil.github.io/paired-eval/README.md): which document answers which question

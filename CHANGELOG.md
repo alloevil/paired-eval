@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-09
+
+### Documentation
+- README restructured for search / LLM retrieval (GEO): `## What it is`, `## Install`, `## When to use it`,
+  `## When NOT to use it`, `## FAQ`, and a "Same name, different project" note disambiguating this package from
+  the unrelated `labsyspharm/paired-eval`. The PyPI long description (`readme = "README.md"`) only refreshes on a
+  release, so this patch exists to ship the updated README to the registry.
+
 ### Added
 - `paired_eval.adapters.agentxray`: turns an AgentXRay session export (`GET /api/<platform>/sessions/<id>`)
   into a `trajectory` task — `observations` from tool results (ids and tool names resolved from the paired
@@ -101,7 +109,8 @@ conclusions that were later overturned in [docs/corrections.md](docs/corrections
   non-main branch or PR merge ref (Dependabot's first PR hit it). The temporary clone now always works on a
   fixed branch name, whatever is checked out.
 
-[Unreleased]: https://github.com/alloevil/paired-eval/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/alloevil/paired-eval/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/alloevil/paired-eval/compare/v0.4.0...v0.4.1
 [0.3.0]: https://github.com/alloevil/paired-eval/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/alloevil/paired-eval/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/alloevil/paired-eval/releases/tag/v0.1.0

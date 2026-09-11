@@ -256,3 +256,9 @@ Descriptions are taken from each project's own README; the full table lives in [
 ## Docs · Contributing · License
 
 [Docs index](docs/README.md) · [Methodology lessons](docs/lessons.md) (what each primitive guards against) · [中文 README](README.zh-CN.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · MIT
+
+---
+
+<p align="center">
+  <a href="https://github.com/oil-oil/beautify-github-readme"><img src="./assets/readme/made-with-beautify.svg" width="300" alt="README made with beautify-github-readme"></a>
+</p>

@@ -226,3 +226,9 @@ print(r["score"])                            # 最终回答的 grounding 率
 ## 文档 · 贡献 · 许可
 
 [文档索引](docs/README.md) · [方法学教训](docs/lessons.md)（每个统计原语防的是什么错）· [CONTRIBUTING.md](CONTRIBUTING.md) · MIT
+
+---
+
+<p align="center">
+  <a href="https://github.com/oil-oil/beautify-github-readme"><img src="./assets/readme/made-with-beautify.svg" width="300" alt="README made with beautify-github-readme"></a>
+</p>

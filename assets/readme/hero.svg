@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"
+     role="img" aria-labelledby="title desc">
+  <title id="title">paired-eval</title>
+  <desc id="desc">paired-eval decides whether one model, agent strategy or harness is really better than another. Beside the name, a panel shows the two-stage verification stack (a program gate runs first, the rubric scores what passes) and one real report line from the offline demo: a paired comparison of the systems bare and strict whose effect is -0.500 with a 95 percent confidence interval from -1.000 to 0.000, p=0.0078 over n=16, with the verdict significant. The four possible verdicts are significant, bounded null, uninformative and powerless.</desc>
+
+  <rect width="1200" height="420" fill="#0E141C"/>
+
+  <!-- left: identity -->
+  <g id="identity">
+    <text x="64" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+          letter-spacing="2" fill="#8B95A5">PYTHON 3.9+ · NO DEPENDENCIES · MIT</text>
+
+    <text x="64" y="156" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+          font-size="80" font-weight="700" fill="#E9EEF6">paired-eval</text>
+
+    <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+       font-size="22" fill="#C6D1E0">
+      <text x="64" y="212">Decides whether one model, agent strategy</text>
+      <text x="64" y="242">or harness is really better than another,</text>
+      <text x="64" y="272">for engineers who already have per-task</text>
+      <text x="64" y="302">A/B results.</text>
+    </g>
+
+    <rect x="64" y="316" width="292" height="44" rx="10" fill="#151E29" stroke="#26333F" stroke-width="1.5"/>
+    <text x="88" y="345" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
+          fill="#E9EEF6">pip install paired-eval</text>
+
+    <text x="64" y="392" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+          font-size="18" fill="#8B95A5">verdicts: significant · bounded null · uninformative · powerless</text>
+  </g>
+
+  <!-- right: how it verifies, then the paired result it reports -->
+  <g id="report">
+    <rect x="600" y="44" width="536" height="328" rx="16" fill="#151E29" stroke="#26333F" stroke-width="1.5"/>
+
+    <text x="632" y="78" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+          fill="#8B95A5">the program gates, the rubric scores</text>
+
+    <g id="verification-stack">
+      <rect x="632" y="96" width="180" height="48" rx="10" fill="#17263A" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="722" y="127" text-anchor="middle"
+            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+            font-size="20" font-weight="600" fill="#E9EEF6">program gate</text>
+
+      <line x1="822" y1="120" x2="852" y2="120" stroke="#8B95A5" stroke-width="2"/>
+      <path d="M860 120 L846 113 L846 127 Z" fill="#8B95A5"/>
+
+      <rect x="874" y="96" width="180" height="48" rx="10" fill="#2A2113" stroke="#F59E0B" stroke-width="1.5"/>
+      <text x="964" y="127" text-anchor="middle"
+            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+            font-size="20" font-weight="600" fill="#E9EEF6">rubric score</text>
+    </g>
+
+    <text x="632" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+          fill="#8B95A5">fails the gate -&gt;0.0, judge never called</text>
+
+    <line x1="632" y1="190" x2="1104" y2="190" stroke="#26333F" stroke-width="1.5"/>
+
+    <text x="632" y="214" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+          fill="#8B95A5">paired test on the per-task results</text>
+    <text x="632" y="236" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+          fill="#C6D1E0">python3 -m paired_eval --lang en</text>
+
+    <g id="paired-interval">
+      <text x="700" y="256" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
+            fill="#8B95A5">CI95</text>
+      <text x="875" y="256" text-anchor="middle"
+            font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
+            fill="#E9EEF6">Δ=-0.500</text>
+
+      <rect x="700" y="274" width="350" height="18" rx="9" fill="#3B82F6"/>
+      <line x1="700" y1="272" x2="700" y2="294" stroke="#3B82F6" stroke-width="2.5"/>
+      <line x1="1050" y1="262" x2="1050" y2="310" stroke="#8B95A5" stroke-width="1.5"/>
+      <circle cx="875" cy="283" r="9.5" fill="#F59E0B" stroke="#0E141C" stroke-width="2"/>
+
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8B95A5">
+        <text x="700" y="320" text-anchor="middle">-1.000</text>
+        <text x="1050" y="320" text-anchor="middle">+0.000</text>
+      </g>
+    </g>
+
+    <text x="632" y="348" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
+          fill="#8B95A5"><tspan fill="#E9EEF6">significant</tspan> p=0.0078 (n=16)</text>
+  </g>
+</svg>

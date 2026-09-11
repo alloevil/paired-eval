@@ -3,7 +3,7 @@
 **paired-eval** is a zero-dependency Python library that decides whether one model, agent strategy or harness is really better than another, for engineers who already have per-task A/B results.
 
 <p align="center">
-  <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
+  <a href="https://alloevil.github.io/paired-eval/"><img src="assets/readme/hero.svg" width="100%" alt="paired-eval: a paired test on the per-task results, shown as a difference of -0.500 with a 95% confidence interval from -1.000 to 0.000, p=0.0078 over n=16, verdict significant, next to the verification stack where a program gate runs first and the rubric scores only what passes"></a>
 </p>
 <p align="center"><em>Evaluate models, agents and harnesses: program checks first, rubrics for the rest, honest paired statistics.</em></p>
 <p align="center">

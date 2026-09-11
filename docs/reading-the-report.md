@@ -12,7 +12,7 @@ at ceiling / at floor | A system at 1.0 or 0.0 has no headroom; effects against 
 Δ, CI95 | Effect size with a bootstrap 95% interval |
 per-task p / per-round McNemar / Holm | The two paired tests; Holm correction when several systems are compared |
 discordant a:b, concentration | Direction and spread of the disagreements; 1.0 = all from one task |
-verdict | significant · bounded null (with the ruled-out effect) · uninformative · powerless (with what is missing) |
+verdict | `significant` / `null` — the four-way distinction is in the report text and in `p_floor` / `rules_out`: bounded null (with the ruled-out effect) · uninformative · powerless (with what is missing) |
 
 "p > 0.05" means three different things with different remedies: too few units is *uninformative*; too few discordant pairs is *powerless* (add rounds, or tasks that separate the systems); enough units and still nothing is a *bounded null* — report the effect it rules out, never "no difference".
 

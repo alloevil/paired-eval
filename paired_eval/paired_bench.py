@@ -30,7 +30,7 @@ model 依赖注入: model(prompt: str) -> str | None (None = 拒答/不可用 ->
     判定器故意严格(strip 后精确比较): 测的就是指令遵循, 宽松即失真。
     单发分歧项必须经 run_repeated 复核才许下结论(有误标前科)。
     多系统比较必须走交错路径; 逐系统分别 run_repeated 再并排会被 reliability_matrix 拒绝。
-    功效上限: ALL_TASKS 的 MDE ≈ 0.24 —— 这是冒烟集, 不是能定论的评测集(docs/findings.md#power-ceiling)。
+    功效上限: ALL_TASKS 的 MDE = 0.25 (detectable_effect(31); 早期实现记作 ≈0.24) —— 这是冒烟集, 不是能定论的评测集(docs/findings.md#power-ceiling)。
 
 用本任务集测出的结论、方法学教训与被推翻的旧结论, 分别见:
     docs/findings.md      实测结论(实例特定: 特定模型对 + 特定任务族, 不可继承)

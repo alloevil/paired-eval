@@ -1,72 +1,72 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"
      role="img" aria-labelledby="title desc">
   <title id="title">paired-eval</title>
-  <desc id="desc">paired-eval decides whether one model, agent strategy or harness is really better than another. Beside the name, a panel shows the two-stage verification stack (a program gate runs first, the rubric scores what passes) and one real report line from the offline demo: a paired comparison of the systems bare and strict whose effect is -0.500 with a 95 percent confidence interval from -1.000 to 0.000, p=0.0078 over n=16, reported as significant. The report text names one of four cases - significant, bounded null (with the effect it rules out), uninformative or powerless - while the machine-readable verdict field is significant or null.</desc>
+  <desc id="desc">paired-eval 判断一个模型、一种 agent 策略或一套 harness 是否真的更好。名称右侧的面板展示两层验证栈（先跑程序 gate，通过的才交给 rubric 打分），以及离线 demo 的一条真实报告：bare 与 strict 两个系统的配对比较，效应 -0.500，bootstrap 95% 区间 -1.000 到 0.000，n=16 时 p=0.0078，报告结论是"显著"。报告文本会写明四种情形之一（显著、有界 null、无信息、检验无力），机器可读的 verdict 字段只有 significant / null。</desc>
 
   <rect width="1200" height="420" fill="#0E141C"/>
 
-  <!-- left: identity -->
+  <!-- 左：身份 -->
   <g id="identity">
     <text x="64" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
-          letter-spacing="2" fill="#8B95A5">PYTHON 3.9+ · NO DEPENDENCIES · MIT</text>
+          letter-spacing="2" fill="#8B95A5">PYTHON 3.9+ &#183; 零依赖 &#183; MIT</text>
 
     <text x="64" y="156" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
           font-size="80" font-weight="700" fill="#E9EEF6">paired-eval</text>
 
-    <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
+    <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif"
        font-size="22" fill="#C6D1E0">
-      <text x="64" y="212">Decides whether one model, agent strategy</text>
-      <text x="64" y="242">or harness is really better than another,</text>
-      <text x="64" y="272">for engineers who already have per-task</text>
-      <text x="64" y="302">A/B results.</text>
+      <text x="64" y="212">判断一个模型、一种 agent 策略</text>
+      <text x="64" y="242">或一套 harness 是否真的更好，</text>
+      <text x="64" y="272">给已经拿到逐题 A/B 结果的</text>
+      <text x="64" y="302">工程师用。</text>
     </g>
 
     <rect x="64" y="316" width="292" height="44" rx="10" fill="#151E29" stroke="#26333F" stroke-width="1.5"/>
     <text x="88" y="345" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
           fill="#E9EEF6">pip install paired-eval</text>
 
-    <text x="64" y="392" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
-          font-size="18" fill="#8B95A5">the report names the case: significant · bounded null · uninformative · powerless</text>
+    <text x="64" y="392" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif"
+          font-size="18" fill="#8B95A5">报告写明四种情形之一：显著 &#183; 有界 null &#183; 无信息 &#183; 检验无力</text>
   </g>
 
-  <!-- right: how it verifies, then the paired result it reports -->
+  <!-- 右：先验证，再报配对结果 -->
   <g id="report">
     <rect x="600" y="44" width="536" height="328" rx="16" fill="#151E29" stroke="#26333F" stroke-width="1.5"/>
 
-    <text x="632" y="78" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
-          fill="#8B95A5">the program gates, the rubric scores</text>
+    <text x="632" y="78" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18"
+          fill="#8B95A5">先用程序 gate，再让 rubric 打分</text>
 
     <g id="verification-stack">
       <rect x="632" y="96" width="180" height="48" rx="10" fill="#17263A" stroke="#3B82F6" stroke-width="1.5"/>
       <text x="722" y="127" text-anchor="middle"
-            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
-            font-size="20" font-weight="600" fill="#E9EEF6">program gate</text>
+            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif"
+            font-size="20" font-weight="600" fill="#E9EEF6">程序 gate</text>
 
       <line x1="822" y1="120" x2="852" y2="120" stroke="#8B95A5" stroke-width="2"/>
       <path d="M860 120 L846 113 L846 127 Z" fill="#8B95A5"/>
 
       <rect x="874" y="96" width="180" height="48" rx="10" fill="#2A2113" stroke="#F59E0B" stroke-width="1.5"/>
       <text x="964" y="127" text-anchor="middle"
-            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif"
-            font-size="20" font-weight="600" fill="#E9EEF6">rubric score</text>
+            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif"
+            font-size="20" font-weight="600" fill="#E9EEF6">rubric 打分</text>
     </g>
 
-    <text x="632" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
-          fill="#8B95A5">fails the gate -&gt;0.0, judge never called</text>
+    <text x="632" y="170" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18"
+          fill="#8B95A5">gate 不通过 &#8594; 0.0，judge 一次都不调用</text>
 
     <line x1="632" y1="190" x2="1104" y2="190" stroke="#26333F" stroke-width="1.5"/>
 
-    <text x="632" y="214" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
-          fill="#8B95A5">paired test on the per-task results</text>
+    <text x="632" y="214" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18"
+          fill="#8B95A5">对逐题结果做配对检验</text>
     <text x="632" y="236" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
-          fill="#C6D1E0">python3 -m paired_eval --lang en</text>
+          fill="#C6D1E0">python3 -m paired_eval --lang zh</text>
 
     <g id="paired-interval">
       <text x="700" y="256" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18"
             fill="#8B95A5">CI95</text>
       <text x="875" y="256" text-anchor="middle"
             font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
-            fill="#E9EEF6">Δ=-0.500</text>
+            fill="#E9EEF6">&#916;=-0.500</text>
 
       <rect x="700" y="274" width="350" height="18" rx="9" fill="#3B82F6"/>
       <line x1="700" y1="272" x2="700" y2="294" stroke="#3B82F6" stroke-width="2.5"/>
@@ -80,6 +80,6 @@
     </g>
 
     <text x="632" y="348" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20"
-          fill="#8B95A5"><tspan fill="#E9EEF6">significant</tspan> p=0.0078 (n=16)</text>
+          fill="#8B95A5">显著 p=0.0078 (n=16)</text>
   </g>
 </svg>

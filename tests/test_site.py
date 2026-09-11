@@ -91,13 +91,17 @@ def test_index_html_is_self_contained_and_well_formed():
     assert (ROOT / "docs" / ".nojekyll").exists(), "Pages 需 .nojekyll: 静态提供 index.html, 不经 Jekyll"
 
 
-def test_readme_headers_reference_existing_logo_and_site():
-    for name in ("README.md", "README.zh-CN.md"):
+def test_readme_headers_reference_existing_hero_and_site():
+    """两条 README 的头部都指向仓内的 hero（各自语言一份），并链到主页。
+    旧的方形 logo 仍由站点使用，所以它也必须还在。"""
+    for name, hero in (("README.md", "assets/readme/hero.svg"),
+                       ("README.zh-CN.md", "assets/readme/hero.zh.svg")):
         t = (ROOT / name).read_text(encoding="utf-8")
-        assert 'src="docs/assets/logo.svg"' in t, f"{name}: 头部应用仓库内的 logo"
-        assert (ROOT / "docs/assets/logo.svg").exists()
+        assert f'src="{hero}"' in t, f"{name}: 头部应用仓库内的 hero"
+        assert (ROOT / hero).exists(), f"{hero} 不存在"
         assert "https://alloevil.github.io/paired-eval/" in t, f"{name}: 应链到主页"
         assert '<h1 align="center">paired-eval</h1>' in t
+    assert (ROOT / "docs/assets/logo.svg").exists(), "主页仍在引用 docs/assets/logo.svg"
 
 
 def test_site_code_samples_are_valid_python_and_match_api():

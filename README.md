@@ -17,8 +17,8 @@
 
 **You ran model A and model B on the same 40 tasks. A scored 0.72, B scored 0.65. Is A better?**
 Usually you cannot tell from those two numbers — and an LLM judge's "A is better" is not evidence either.
-paired-eval answers with a paired test on the per-task results, a confidence interval, and a verdict that
-says *significant* / *bounded null* (with the effect it rules out) / *uninformative* / *powerless* — never a bare "p > 0.05".
+paired-eval answers with a paired test on the per-task results, a confidence interval, and a report whose text names
+the case — *significant* / *bounded null* (with the effect it rules out) / *uninformative* / *powerless* — never a bare "p > 0.05". The machine-readable `verdict` field is `significant` / `null`; the sub-case and the ruled-out effect live in the text and in `p_floor` / `rules_out`.
 
 ```sh
 pip install paired-eval
@@ -70,9 +70,9 @@ The three objects ask three different questions and hold different things consta
 ## How it verifies: programmatic checks first, judges only for what they cannot cover
 
 ```
-a unique ground truth ──→ exact (numeric / choice / set / \boxed{}) or a programmatic check(response) -> bool
+a unique ground truth ──→ exact (numeric / choice, read from a marker slot or \boxed{}; structured set answers go through the separate match_set helper) or a programmatic check(response) -> bool
 only sources of fact  ──→ retrieval (verify against search) / trajectory (ground each claim in what the agent saw)
-only a quality bar    ──→ rubric (per-criterion binary judging, weighted; the rubric must pass a canary: a bluffing answer must not score high)
+only a quality bar    ──→ rubric (per-criterion met/not_met judging, weighted, with abstentions excluded from the score and reported separately; the rubric must pass a canary: a bluffing answer must not score high)
 ```
 
 Layers stack — **the program gates, the rubric scores**. Failing the gate scores 0 and never calls the judge: you do not pay a judge for an answer that is already wrong, and the judge cannot be fooled on "does it work" — it only ranks quality among candidates that do.
@@ -159,12 +159,12 @@ Plan the sample size before running, and let `interpret` state the conclusion af
 
 ```python
 pe.required_tasks(0.30, 0.10)         # A wins 30% / loses 10% of tasks: paired tasks needed for 80% power
-pe.required_pairs(0.15, 0.30)         # continuous scores, mean diff 0.15, sd 0.30 -> runs the real permutation test (~20 s)
+pe.required_pairs(0.15, 0.30)         # continuous scores, mean diff 0.15, sd 0.30 -> runs the real permutation test (about a minute: 71 s on an i7-10700; drop sims/resamples for a quick estimate)
 pe.detectable_effect(31)              # the inverse: the smallest one-sided win rate 31 tasks can detect
 pe.interpret(pe.paired_compare(scores_a, scores_b), lang="en")["text"]   # afterwards: what this result can and cannot say
 ```
 
-`screen_tasks` / `screen_graded` screen for tasks that discriminate, in two stages; near-ceiling tasks (> 0.9) are excluded by default — they cannot be screened reliably at any affordable number of runs.
+`screen_tasks` / `screen_graded` screen for tasks that discriminate, in two stages; `screen_graded` excludes near-ceiling tasks by default (band upper bound 0.9) — they cannot be screened reliably at any affordable number of runs — while `screen_tasks` drops only tasks where every run of every system passes or fails.
 
 ## Evaluating a real agent run
 
@@ -211,7 +211,7 @@ Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` · `paired_e
 
 - **Is**: a method and toolkit for evaluating models / agents / harnesses — stackable verifiers (program gate + rubric score), honest statistics for paired comparison, sample-size planning, task screening.
 - **Is not**: a large task library (the 31 built-in tasks are examples and self-tests), an evaluation platform, a model client, or a rubric **generator** (the autorubric half is not here — this evaluates whether a rubric can be fooled). Run large suites with the frameworks above and hand their per-task scores to this.
-- **Status**: 0.4.0, single author, API may change. Reports in English and Chinese (`set_language`); code comments and built-in tasks are Chinese.
+- **Status**: 0.4.1 (PyPI serves 0.4.0), single author, API may change. Reports in English and Chinese (`set_language`); code comments and built-in tasks are Chinese.
 - [docs/findings.md](docs/findings.md) is a case study done with this toolbox on one model pair and three task families: harness and agent effects of about +0.6–0.75, model effect < 10%, the two with diminishing but stackable returns. The numbers are instance-specific and show how a conclusion should be written.
 
 ## When to use it
@@ -228,7 +228,7 @@ Adapters | `make_resilient` `throttled_pmap` `Meter` `set_language` · `paired_e
 - **Not for unpaired results.** The same tasks in the same order for both systems is a hard requirement; aggregate scores cannot be re-paired after the fact.
 - **Not a runner or a platform.** No model client, no task execution, no dashboard — and no rubric *generator*; `rubric_canary` only tests whether a rubric can be fooled.
 - **Not a source of general claims.** An effect measured on one task family does not transfer: tasks screened here for scaffold sensitivity turned out insensitive to the model.
-- **Not stable yet.** 0.4.0, single author, API may change; code comments and built-in tasks are in Chinese, though reports are bilingual.
+- **Not stable yet.** 0.4.1 (PyPI serves 0.4.0), single author, API may change; code comments and built-in tasks are in Chinese, though reports are bilingual.
 
 ## Compared to lm-evaluation-harness, Inspect, promptfoo and openai/evals
 

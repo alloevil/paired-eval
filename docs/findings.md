@@ -160,7 +160,8 @@ tight | **0.794** | **0.917** |
 <a name="power-ceiling"></a>
 ## 6. 功效上限（诚实披露）
 
-`ALL_TASKS` 共 31 题，`claim_eval.detectable_effect(31) ≈ 0.24`——即"较优系统需在 ≥24% 的题上
+`ALL_TASKS` 共 31 题，`claim_eval.detectable_effect(31) = 0.25`（本文早先按当时的实现记作 ≈0.24；committed 实现现在返回 0.25，见 `docs/claims.json` 的
+smoke-set-detectable-effect）——即"较优系统需在 ≥25% 的题上
 单方面胜出且几乎无反向失误"才可能显著。**这是冒烟集，不是能定论的评测集**；要检出 10% 量级的差异
 需上百道配对任务（见 `required_tasks`）。
 

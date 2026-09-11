@@ -3,7 +3,7 @@
 **paired-eval** 是一个零依赖的 Python 库，替已经拿到逐题 A/B 结果的工程师回答：一个模型、一个 agent 策略、一套 harness，是否真的比另一个更好。
 
 <p align="center">
-  <a href="https://alloevil.github.io/paired-eval/"><img src="docs/assets/logo.svg" width="96" height="96" alt="paired-eval"></a>
+  <a href="https://alloevil.github.io/paired-eval/"><img src="assets/readme/hero.zh.svg" width="100%" alt="paired-eval：对逐题结果做配对检验——图中示例为效应 -0.500、bootstrap 95% 区间 [-1.000, +0.000]、n=16 时 p=0.0078、结论显著；右侧是验证栈：先跑程序 gate，通过的才交给 rubric 打分"></a>
 </p>
 <p align="center"><em>给模型、agent、harness 做评测：能用程序验证的先验，验不过的再交给 rubric；每一次比较都做成统计上诚实的配对。</em></p>
 <p align="center">
@@ -36,9 +36,9 @@
 ## 怎么验：能用程序验的先验，验不过的再判
 
 ```
-有唯一真值 ──→ exact(数值 / 选项 / 集合 / \boxed{}) 或程序判定 check(response) -> bool
+有唯一真值 ──→ exact(数值 / 选项，从 marker 槽或 \boxed{} 读出；结构化集合答案走独立的 match_set) 或程序判定 check(response) -> bool
 只有事实来源 ──→ retrieval(检索核实) / trajectory(逐条 claim 对 agent 看到的观察做 grounding)
-只有质量标准 ──→ rubric(逐条二值判定 + 加权; rubric 自身要过 canary: 糊弄回答不得高分)
+只有质量标准 ──→ rubric(逐条 met/not_met 判定 + 加权，abstain 不计入分母并单独报告; rubric 自身要过 canary: 糊弄回答不得高分)
 ```
 
 层可以叠加——**程序做 gate，rubric 做 score**。验不过直接 0 分且不调用评委：不为一个已经错了的回答付 judge 的钱，也不让 judge 在"能不能跑"上被表面功夫骗过，它只在确实过关的候选里分高下。
@@ -133,12 +133,12 @@ for axis, run in runs.items():
 
 ```python
 pe.required_tasks(0.30, 0.10)         # A 胜率 30%、负率 10%: 要多少配对任务才有 80% 功效
-pe.required_pairs(0.15, 0.30)         # 连续分数: 均值差 0.15、sd 0.30 -> 内部真跑置换检验求 n(约 20 秒)
+pe.required_pairs(0.15, 0.30)         # 连续分数: 均值差 0.15、sd 0.30 -> 内部真跑置换检验求 n(约 1 分钟: i7-10700 上 71 秒; 想快速估个数量级就调小 sims/resamples)
 pe.detectable_effect(31)              # 反过来: 31 道题最小能检出多大的单方面胜率
 pe.interpret(pe.paired_compare(scores_a, scores_b))["text"]   # 事后: 这个结果能说什么
 ```
 
-`screen_tasks` / `screen_graded` 两阶段筛选帮你找有区分力的题——成功率 > 0.9 的近顶题默认排除，它们在任何可负担轮数下都筛不稳。
+`screen_tasks` / `screen_graded` 两阶段筛选帮你找有区分力的题——`screen_graded` 默认排除成功率 > 0.9 的近顶题（band 上界 0.9），它们在任何可负担轮数下都筛不稳；`screen_tasks` 只丢掉"所有系统的每次运行都通过或都失败"的题。
 
 ## 评一次真实的 agent 运行
 
@@ -159,7 +159,7 @@ print(r["score"])                            # 最终回答的 grounding 率
 ## 报告怎么读
 
 报告里每个字段都在防一种误读——有效样本、触顶/触底、不一致对的集中度，以及四种结论
-（显著 / 有界 null / 无信息 / 检验无力）。"p > 0.05" 有三种含义、三种处方：见
+（显著 / 有界 null / 无信息 / 检验无力；机器可读的 `verdict` 字段只有 `significant` / `null`，细分与"排除了多大效应"在文本和 `p_floor` / `rules_out` 里）。"p > 0.05" 有三种含义、三种处方：见
 [docs/reading-the-report.md](docs/reading-the-report.md)。
 
 与 lm-evaluation-harness、Inspect、promptfoo、openai/evals 的关系——它们跑评测，这里接住逐题分数并回答"这个差别可信吗"：
@@ -181,7 +181,7 @@ print(r["score"])                            # 最终回答的 grounding 率
 
 - **是**：给模型 / agent / harness 做评测的方法与工具——可叠加的验证器（程序 gate + rubric score）、配对比较的诚实统计、样本量规划、筛题。
 - **不是**：大规模题库（内置 31 题只作示例与自测）、评测平台、模型客户端、rubric **生成**器（autorubric 的那一半不在这里——这里评的是 rubric 会不会被骗）。跑大规模任务集请用上面那些框架，把逐题分数交给这里。
-- **状态**：0.4.0，单作者，接口可能变。报告中英双语（`set_language`）；代码注释与内置题为中文。
+- **状态**：0.4.1（PyPI 上仍是 0.4.0），单作者，接口可能变。报告中英双语（`set_language`）；代码注释与内置题为中文。
 - [docs/findings.md](docs/findings.md) 是用本工具对一对模型、三族任务做的案例研究：harness 与 agent 的效应各约 +0.6~0.75，模型效应 < 10%，两者收益递减但可叠加。数字是实例特定的，展示的是报告该怎么写。
 
 ## 什么时候用它
@@ -198,7 +198,7 @@ print(r["score"])                            # 最终回答的 grounding 率
 - **不接受非配对结果**。同一批题、同一顺序是硬要求；只剩汇总分数时，配对无法事后补回来。
 - **不是运行器、不是平台**。没有模型客户端、不跑任务、没有看板；也不**生成** rubric，`rubric_canary` 只检验一份 rubric 会不会被糊弄。
 - **不产出普适结论**。一个题族上测到的效应不会自动迁移：本仓库为脚手架维度筛出的题，换比模型时就不敏感了。
-- **接口尚未稳定**。0.4.0、单作者，接口可能变；代码注释与内置题是中文（报告中英双语）。
+- **接口尚未稳定**。0.4.1（PyPI 上仍是 0.4.0）、单作者，接口可能变；代码注释与内置题是中文（报告中英双语）。
 
 ## 与 lm-evaluation-harness / Inspect / promptfoo / openai/evals 的关系
 

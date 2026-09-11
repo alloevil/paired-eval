@@ -2,7 +2,7 @@
   "project": "paired-eval",
   "url": "https://alloevil.github.io/paired-eval/",
   "repository": "https://github.com/alloevil/paired-eval",
-  "updated": "2026-09-08",
+  "updated": "2026-09-12",
   "claims": [
     {
       "id": "zero-third-party-dependencies",
@@ -40,7 +40,7 @@
       "value": "+0.625",
       "metric": "scaffold main effect on pass rate in a 2x2 factorial over model and scaffold",
       "method": "4 format-sensitive tasks x 4 interleaved rounds; per-round McNemar exact with Holm correction gives p=0.0117 and discordant pairs 0:10; the effect reproduces across JSON object, JSON array, key=value and YAML, so it is not a single-task artifact",
-      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_scaffold_effect(call)\"",
+      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_scaffold_effect(call)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#harness",
       "verified": "2026-09-07"
     },
@@ -50,7 +50,7 @@
       "value": "< 0.10",
       "metric": "upper bound on the model main effect on pass rate",
       "method": "4 tasks x 20 rounds = 80 paired units at MDE 0.10 give delta=+0.025, CI95 [0.000, +0.075], discordant 5:3, p=0.727. This value supersedes an earlier over-claim (delta=0.000, p=1.000 on 16 units, whose MDE was 0.46 and could exclude almost nothing) retracted in docs/corrections.md",
-      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_model_null(call_a, call_b)\"",
+      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_model_null(call_a, call_b)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/corrections.md#over-claimed-null",
       "verified": "2026-09-07"
     },
@@ -60,7 +60,7 @@
       "value": "+0.750",
       "metric": "agent strategy effect on pass rate, single pass vs draft then self-correct",
       "method": "same model, same bare instruction, one extra model call and no tools or prompt constraints added; CI95 [+0.250, +1.000], per-round McNemar p=0.00049, discordant pairs 12:0, concentration 0.33",
-      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"",
+      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#agent",
       "verified": "2026-09-07"
     },
@@ -70,7 +70,7 @@
       "value": "0% vs 86-89%",
       "metric": "share of claims in the final answer that no observation supports, under a must_ground trajectory policy",
       "method": "same observations and same judge; under 'answer only from the source' all 8 claims were grounded, under 'add relevant background you know' 84 of 98 and 97 of 109 claims were ungrounded across 206 claims. The model-to-model comparison in the same experiment had only 4 paired prompts and is recorded as an uninformative null, so it is deliberately not claimed here",
-      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"",
+      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#prompt-constraint",
       "verified": "2026-09-07"
     },
@@ -80,7 +80,7 @@
       "value": "+0.183",
       "metric": "self-check increment in grounding rate when the strict prompt is already in place",
       "method": "cross-item derivation tasks, the only screened family with headroom (reference cell 0.64-0.89): 18 paired units, CI95 [+0.086, +0.285], p=0.0046, independently reproduced on 18 fresh units at +0.281, p=0.0002. Two disclosed limits: this refutes an earlier 'either one is enough' reading whose 2x2 had both strict cells at the 1.000 ceiling, and the original n=18 sample-size argument was itself wrong (permutation power at n=18 is 0.45, required_pairs now returns 42), so the claim rests on the independent reproduction rather than on the first run",
-      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_derivation_increment(call, judge)\"",
+      "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_derivation_increment(call, judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/corrections.md#substitution-refuted",
       "verified": "2026-09-07"
     }

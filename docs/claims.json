@@ -2,7 +2,7 @@
   "project": "paired-eval",
   "url": "https://alloevil.github.io/paired-eval/",
   "repository": "https://github.com/alloevil/paired-eval",
-  "updated": "2026-09-12",
+  "updated": "2026-09-13",
   "claims": [
     {
       "id": "zero-third-party-dependencies",
@@ -12,7 +12,16 @@
       "method": "pyproject.toml declares dependencies = [] as a design constraint; requires-python is >=3.9",
       "repro": "grep '^dependencies' pyproject.toml",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/pyproject.toml",
-      "verified": "2026-09-08"
+      "verified": "2026-09-08",
+      "check": {
+        "cmd": "grep -q '^dependencies = \\[\\]' pyproject.toml && echo 'no runtime deps'",
+        "expect": {
+          "contains": [
+            "no runtime deps"
+          ]
+        },
+        "timeout": 60
+      }
     },
     {
       "id": "smoke-set-detectable-effect",
@@ -22,7 +31,14 @@
       "method": "detectable_effect runs a Monte-Carlo grid search whose decision rule is the same mcnemar_exact used by the tests (seed=0, 400 sims, step 0.01); docs/findings.md records approximately 0.24 for this call, the committed implementation returns 0.25 today, and the larger value is the one reported here",
       "repro": "python3 -c \"import paired_eval as pe; print(pe.detectable_effect(31))\"",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#power-ceiling",
-      "verified": "2026-09-08"
+      "verified": "2026-09-08",
+      "check": {
+        "cmd": "python3 -c \"import paired_eval as pe; print(pe.detectable_effect(31))\"",
+        "expect": {
+          "equals": "0.25"
+        },
+        "timeout": 300
+      }
     },
     {
       "id": "mutation-baseline-survivors",
@@ -32,7 +48,15 @@
       "method": "mutate_auto.py mutates every mutation point and reruns the fast test suite as the oracle; checkall.sh stage 5 documents the full scan as 473 mutation points and compares survivors against mutation_baseline.json",
       "repro": "sh checkall.sh",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/mutation_baseline.json",
-      "verified": "2026-09-08"
+      "verified": "2026-09-08",
+      "check": {
+        "cmd": "python3 -c \"import json;print(len(json.load(open('mutation_baseline.json'))['survivors']))\"",
+        "expect": {
+          "equals": "30"
+        },
+        "timeout": 60,
+        "note": "counts the committed survivor list; the full `checkall.sh` ratchet (~25 minutes) is what regenerates it"
+      }
     },
     {
       "id": "scaffold-main-effect",
@@ -42,7 +66,10 @@
       "method": "4 format-sensitive tasks x 4 interleaved rounds; per-round McNemar exact with Holm correction gives p=0.0117 and discordant pairs 0:10; the effect reproduces across JSON object, JSON array, key=value and YAML, so it is not a single-task artifact",
       "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_scaffold_effect(call)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#harness",
-      "verified": "2026-09-07"
+      "verified": "2026-09-07",
+      "check": {
+        "manual": "reproduce_findings needs an injected model callable (a real model call); the committed value is from the recorded run in docs/findings.md"
+      }
     },
     {
       "id": "model-effect-bounded-null",
@@ -52,7 +79,10 @@
       "method": "4 tasks x 20 rounds = 80 paired units at MDE 0.10 give delta=+0.025, CI95 [0.000, +0.075], discordant 5:3, p=0.727. This value supersedes an earlier over-claim (delta=0.000, p=1.000 on 16 units, whose MDE was 0.46 and could exclude almost nothing) retracted in docs/corrections.md",
       "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_model_null(call_a, call_b)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/corrections.md#over-claimed-null",
-      "verified": "2026-09-07"
+      "verified": "2026-09-07",
+      "check": {
+        "manual": "same: the 80-unit comparison needs a model; the recorded numbers and their CI live in docs/findings.md"
+      }
     },
     {
       "id": "self-check-effect",
@@ -62,7 +92,10 @@
       "method": "same model, same bare instruction, one extra model call and no tools or prompt constraints added; CI95 [+0.250, +1.000], per-round McNemar p=0.00049, discordant pairs 12:0, concentration 0.33",
       "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#agent",
-      "verified": "2026-09-07"
+      "verified": "2026-09-07",
+      "check": {
+        "manual": "needs a model call; see docs/findings.md for the recorded run"
+      }
     },
     {
       "id": "prompt-constraint-grounding",
@@ -72,7 +105,10 @@
       "method": "same observations and same judge; under 'answer only from the source' all 8 claims were grounded, under 'add relevant background you know' 84 of 98 and 97 of 109 claims were ungrounded across 206 claims. The model-to-model comparison in the same experiment had only 4 paired prompts and is recorded as an uninformative null, so it is deliberately not claimed here",
       "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.main(call, call_b=call_b, judge=judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/findings.md#prompt-constraint",
-      "verified": "2026-09-07"
+      "verified": "2026-09-07",
+      "check": {
+        "manual": "needs a model plus a judge; the 0% vs 86-89% split is from the recorded run in docs/findings.md"
+      }
     },
     {
       "id": "scaffold-and-self-check-stack",
@@ -82,7 +118,10 @@
       "method": "cross-item derivation tasks, the only screened family with headroom (reference cell 0.64-0.89): 18 paired units, CI95 [+0.086, +0.285], p=0.0046, independently reproduced on 18 fresh units at +0.281, p=0.0002. Two disclosed limits: this refutes an earlier 'either one is enough' reading whose 2x2 had both strict cells at the 1.000 ceiling, and the original n=18 sample-size argument was itself wrong (permutation power at n=18 is 0.45, required_pairs now returns 42), so the claim rests on the independent reproduction rather than on the first run",
       "repro": "python3 -c \"from paired_eval import reproduce_findings as r; r.check_derivation_increment(call, judge)\"  # template: needs an injected model callable (see the reproduce_findings docstring); `python3 -m paired_eval.reproduce_findings` prints what it needs",
       "evidence": "https://github.com/alloevil/paired-eval/blob/main/docs/corrections.md#substitution-refuted",
-      "verified": "2026-09-07"
+      "verified": "2026-09-07",
+      "check": {
+        "manual": "needs a model plus a judge; recorded in docs/findings.md"
+      }
     }
   ]
 }

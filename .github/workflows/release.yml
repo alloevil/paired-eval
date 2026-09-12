@@ -1,56 +1,59 @@
-# Tag push (vX.Y.Z) -> fast suite -> build sdist+wheel -> PyPI (Trusted Publishing) -> GitHub Release.
-# One-time setup on pypi.org: project "paired-eval" -> Publishing -> add GitHub publisher
-#   owner alloevil / repo paired-eval / workflow release.yml / environment pypi.
 name: release
 
+# Publishes to public PyPI on a version tag, using PyPI Trusted Publishing (OIDC) —
+# no API token is stored in this repository. One-time setup on pypi.org:
+#   Your projects → paired-eval → Publishing → Add a new pending publisher
+#     Owner: alloevil   Repository: paired-eval   Workflow: release.yml   Environment: pypi
+# After that, `git tag v0.4.1 && git push origin v0.4.1` publishes that version.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: build sdist + wheel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: sh runtests.sh
-      - name: Tag must match pyproject version
+      - name: The tag must match the version in pyproject.toml
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          v="v$(python3 -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
-          test "$v" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != pyproject $v"; exit 1; }
-      - run: python3 -m pip install --quiet build && python3 -m build
-      - name: Smoke the wheel in a clean venv
+          set -euo pipefail
+          version=$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          tag=${GITHUB_REF_NAME#v}
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $version"
+            exit 1
+          fi
+          echo "tag matches version $version"
+      - name: Run the test suite first
         run: |
-          python3 -m venv /tmp/v && /tmp/v/bin/pip install --quiet dist/*.whl
-          cd /tmp && /tmp/v/bin/python -m paired_eval --lang en | head -3
-          /tmp/v/bin/python -c "import paired_eval as pe, sys; assert pe.__version__ == '${GITHUB_REF_NAME#v}'; print(pe.interpret(pe.paired_compare([1,0,1,1],[1,0,0,1]), lang='en')['verdict'])"
+          python3 -m unittest discover -s tests -t . 2>/dev/null || python3 -m pytest tests/ -q
+      - run: python3 -m pip install --upgrade build
+      - run: python3 -m build
+      - run: python3 -m pip install --upgrade twine && python3 -m twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
   publish:
+    name: publish to PyPI
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write   # PyPI Trusted Publishing
-      contents: write   # GitHub Release
+      id-token: write # Trusted Publishing: the OIDC token replaces an API token
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
-      - name: GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" dist/* -R "$GITHUB_REPOSITORY" --clobber

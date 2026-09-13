@@ -122,6 +122,40 @@
       "check": {
         "manual": "needs a model plus a judge; recorded in docs/findings.md"
       }
+    },
+    {
+      "id": "version-matches-manifest",
+      "claim": "The version the package reports equals the version declared in pyproject.toml.",
+      "value": "0.4.1",
+      "metric": "paired_eval.__version__ vs the manifest's project.version",
+      "method": "both are printed and compared line by line; the release workflow refuses a tag that disagrees",
+      "repro": "python3 -c 'import paired_eval; print(paired_eval.__version__)'; grep -m1 '^version = \"' pyproject.toml | cut -d'\"' -f2",
+      "evidence": "pyproject.toml",
+      "as_of": "2026-09-13",
+      "check": {
+        "cmd": "python3 -c 'import paired_eval; print(paired_eval.__version__)'; grep -m1 '^version = \"' pyproject.toml | cut -d'\"' -f2",
+        "expect": {
+          "equals": "0.4.1\n0.4.1"
+        },
+        "timeout": 60
+      }
+    },
+    {
+      "id": "required-pairs-defaults",
+      "claim": "required_pairs() defaults to sims=200 and resamples=2000 — the parameters the README's 'about a minute' sentence describes.",
+      "value": "sims=200, resamples=2000",
+      "metric": "default values in the signature of claim_eval.required_pairs",
+      "method": "inspect.signature over the public function",
+      "repro": "python3 -c \"import inspect, paired_eval as pe; s = inspect.signature(pe.required_pairs); print(s.parameters['sims'].default, s.parameters['resamples'].default)\"",
+      "evidence": "paired_eval/claim_eval.py",
+      "as_of": "2026-09-13",
+      "check": {
+        "cmd": "python3 -c \"import inspect, paired_eval as pe; s = inspect.signature(pe.required_pairs); print(s.parameters['sims'].default, s.parameters['resamples'].default)\"",
+        "expect": {
+          "equals": "200 2000"
+        },
+        "timeout": 60
+      }
     }
   ]
 }

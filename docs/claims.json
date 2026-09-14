@@ -2,7 +2,7 @@
   "project": "paired-eval",
   "url": "https://alloevil.github.io/paired-eval/",
   "repository": "https://github.com/alloevil/paired-eval",
-  "updated": "2026-09-13",
+  "updated": "2026-09-14",
   "claims": [
     {
       "id": "zero-third-party-dependencies",
@@ -153,6 +153,26 @@
         "cmd": "python3 -c \"import inspect, paired_eval as pe; s = inspect.signature(pe.required_pairs); print(s.parameters['sims'].default, s.parameters['resamples'].default)\"",
         "expect": {
           "equals": "200 2000"
+        },
+        "timeout": 60
+      }
+    },
+    {
+      "id": "recorded-figures-agree-with-findings",
+      "claim": "The model-dependent figures this file marks manual are the same numbers `docs/findings.md` records — the two published copies of that run cannot drift apart.",
+      "value": "every manual figure appears in docs/findings.md",
+      "metric": "each manual claim's published number, looked up in docs/findings.md",
+      "method": "reads the claims marked manual, extracts the numbers each one publishes, and requires every one of them to appear in docs/findings.md. This proves the gate's copy and the document's copy agree; it does NOT prove the run happened. The per-item outputs behind those figures were never committed, which is exactly why those claims stay manual.",
+      "repro": "python3 -m verify_claims --root . list | grep manual; grep -nE '0\\.625|0\\.750|0\\.183|0\\.10' docs/findings.md",
+      "evidence": "docs/findings.md",
+      "as_of": "2026-09-14",
+      "check": {
+        "cmd": "python3 -c \"import json,re,pathlib;d=json.loads(pathlib.Path('docs/claims.json').read_text(encoding='utf-8'));doc=pathlib.Path('docs/findings.md').read_text(encoding='utf-8');man=[c for c in d['claims'] if 'manual' in (c.get('check') or {})];toks=[t for c in man for t in re.findall(r'\\d+(?:\\.\\d+)?', str(c.get('value')))];toks=[t for t in toks if '.' in t or len(t)>=2];missing=[t for t in toks if t not in doc];print('figures', len(toks), 'missing', missing);assert not missing, missing\"",
+        "expect": {
+          "contains": [
+            "missing []"
+          ],
+          "regex": "figures [1-9]\\d* missing"
         },
         "timeout": 60
       }

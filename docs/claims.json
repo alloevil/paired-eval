@@ -176,6 +176,23 @@
         },
         "timeout": 60
       }
+    },
+    {
+      "id": "keyboard-focus-visible",
+      "claim": "Interactive pages expose a visible keyboard focus style.",
+      "value": "focus-visible present on the interactive page",
+      "metric": "focus-visible CSS marker in the generated or committed page",
+      "method": "The check is structural: the page must contain a focus-visible selector so keyboard users retain a visible focus indicator when hover is unavailable.",
+      "repro": "python3 -c \"import pathlib;files=['docs/index.html'];bad=[f for f in files if 'focus-visible' not in pathlib.Path(f).read_text(encoding='utf-8')];print('files',len(files),'missing',bad);assert not bad\"",
+      "evidence": "docs/index.html",
+      "as_of": "2026-09-24",
+      "check": {
+        "cmd": "python3 -c \"from pathlib import Path;files=['docs/index.html'];bad=[f for f in files if ':focus-visible' not in Path(f).read_text(encoding='utf-8')];print('missing',bad);assert not bad\"",
+        "expect": {
+          "regex": "missing \\[\\]$"
+        },
+        "timeout": 60
+      }
     }
   ]
 }

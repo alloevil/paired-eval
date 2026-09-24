@@ -44,6 +44,9 @@ th{color:var(--muted);font-weight:600}
 .bar{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
 footer{padding:28px 0 48px;color:var(--muted);font-size:14px;text-align:center}
 code.inl{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.92em}
+
+/* Keyboard focus must remain visible even when hover is unavailable. */
+:where(a,button,input,select,summary):focus-visible { outline: 3px solid var(--accent, #58a6ff); outline-offset: 3px; }
 </style>
 <script type="application/ld+json">
 {

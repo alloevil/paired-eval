@@ -249,7 +249,10 @@ def build():
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
-<style>{CSS}</style>
+<style>{CSS}
+/* Keyboard focus must remain visible even when hover is unavailable. */
+:where(a,button,input,select,summary):focus-visible {{ outline: 3px solid var(--accent, #58a6ff); outline-offset: 3px; }}
+</style>
 <script type="application/ld+json">
 {json_ld(version)}
 </script>

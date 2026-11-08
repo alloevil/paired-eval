@@ -34,7 +34,7 @@ stage() {
 }
 
 stage "1 快速套件" sh runtests.sh
-# 1b: 本机装了别的解释器就都跑一遍(各 ~3 秒)。CI 矩阵覆盖 3.9 与最新版, 本地也该能在推送前看到。
+# 1b: 本机装了别的解释器就都跑一遍(各 ~3 秒)。CI 矩阵覆盖 3.12 与 3.13, 本地也该能在推送前看到。
 for alt in python3.9 python3.10 python3.11 python3.12 python3.13 python3.14; do
     if command -v "$alt" >/dev/null 2>&1 && [ "$("$alt" -c 'import sys; print(sys.version_info[:2])')" != "$(python3 -c 'import sys; print(sys.version_info[:2])')" ]; then
         stage "1b 快速套件 ($alt)" env PYTHON="$alt" sh runtests.sh

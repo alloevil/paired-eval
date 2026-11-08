@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- CI `fast-suite` no longer tests Python 3.9: `ubuntu-latest` is now 26.04, and
+  `setup-python` has no 3.9 build for that image. Package `requires-python`
+  remains `>=3.9`.
+
 ## [0.4.1] - 2026-09-09
 
 ### Documentation
